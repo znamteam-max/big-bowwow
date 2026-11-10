@@ -137,6 +137,7 @@ function go(id){
   if (id==='ladder') renderLadder();
   if (id==='shop') renderShop();
   ambient.target = document.querySelector(`#${id} [data-fx]`);
+  camOnScreen(id);
 }
 function renderHeroes(){
   $('heroGrid').innerHTML = HEROES.map(h=>`
@@ -148,7 +149,7 @@ function renderHeroes(){
 }
 function renderLadder(){
   $('modeSeg').innerHTML = Object.entries(MODES).map(([k,m])=>`<button class="${S.mode===k?'on':''}" onclick="setMode('${k}')">${m.name}</button>`).join('');
-  $('modeHint').textContent = MODES[S.mode].hint;
+  $('modeHint').textContent = MODES[S.mode].hint; syncCamUI();
   $('might').innerHTML = `<span>Мощь аппарата: <b>${might()}</b></span><button onclick="go('shop')">Прокачать</button>`;
   let html='';
   ACTS.forEach(a=>{
@@ -196,13 +197,13 @@ function setMode(m){ S.mode=m; save(); renderLadder(); }
 function toggleMute(){ audio(); S.mute=!S.mute; save(); musicGain.gain.value=S.mute?0:M.vol; go(document.querySelector('.screen.on').id); }
 
 /* ================= ЗВУК ================= */
-let AC, dist, musicGain, sfxGain, noiseBuf;
+let AC, dist, musicGain, sfxGain, noiseBuf, masterOut;
 function audio(){
   if (AC){ if(AC.state==='suspended') AC.resume(); return; }
   AC = new (window.AudioContext||window.webkitAudioContext)();
-  const comp=AC.createDynamicsCompressor(); comp.connect(AC.destination);
-  musicGain=AC.createGain(); musicGain.connect(comp);
-  sfxGain=AC.createGain(); sfxGain.gain.value=.9; sfxGain.connect(comp);
+  masterOut=AC.createDynamicsCompressor(); masterOut.connect(AC.destination);
+  musicGain=AC.createGain(); musicGain.connect(masterOut);
+  sfxGain=AC.createGain(); sfxGain.gain.value=.9; sfxGain.connect(masterOut);
   dist=AC.createWaveShaper();
   const n=1024, c=new Float32Array(n); for(let i=0;i<n;i++){const x=i*2/n-1; c[i]=Math.tanh(x*7)} dist.curve=c;
   const lp=AC.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=2800;
@@ -415,9 +416,10 @@ let mic=null;
 async function micStart(){
   if (mic) return true;
   try{
-    const st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:false,autoGainControl:false}});
+    const shared = !!(CAM.stream && CAM.stream.getAudioTracks().some(t=>t.readyState==='live'));   // iOS глушит второй захват микрофона — берём из камеры
+    const st= shared ? new MediaStream(CAM.stream.getAudioTracks()) : await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:false,autoGainControl:false}});
     const src=AC.createMediaStreamSource(st), an=AC.createAnalyser(); an.fftSize=1024; src.connect(an);
-    mic={st,an,buf:new Float32Array(an.fftSize),floor:.01,loud:false,peak:0};
+    mic={st,an,shared,buf:new Float32Array(an.fftSize),floor:.01,loud:false,peak:0};
     return true;
   }catch(e){ note('Микрофон недоступен (нет разрешения или устройства). Этот бой — в режиме «Кликер».'); return false; }
 }
@@ -462,6 +464,7 @@ function loadSong(o, startAt){
   startSong(s.song,startAt,.5);
 }
 function enter(used){
+  recDiscard(); if (S.cam) camAcquire();
   $('frame').classList.remove('solo'); $('arena').classList.remove('dark');
   $('hName').textContent=B.h.short||B.h.name; $('heroImg').src=B.h.img; faceStyle($('pHero'),B.h.img,B.h.face);
   setOpp(B.o);
@@ -472,6 +475,7 @@ function enter(used){
   stopMusic(); go('battle'); draw();
   const begin=()=>countdown(()=>{
     B.started=true; B.last=performance.now();
+    recStart();
     if (B.mode==='rhythm') loadSong(B.o, AC.currentTime+LEAD);
     else startLoop(B.h.bpm, B.mode==='voice'?.15:.5);
     if(used.length) setTimeout(()=>pop('БУСТЫ '+used.join(' '),'#ffcf4a',true),300);
@@ -510,6 +514,7 @@ function countdown(cb){
 /* ---- пауза ---- */
 function freeze(){
   B.paused=true; B.pauseAt=AC.currentTime; stopMusic(); musicGain.gain.setValueAtTime(0,AC.currentTime);
+  try{ if (CAM.rec && CAM.rec.state==='recording') CAM.rec.pause(); }catch(e){}
   document.querySelectorAll('.item').forEach(e=>e.getAnimations().forEach(a=>a.pause()));
 }
 /* Стоп-кадр с подсказкой (один раз на каждую механику) */
@@ -548,6 +553,7 @@ function resume(){
   else { M.t0+=shift; M.next=AC.currentTime+.05; }
   M.on=true; musicGain.gain.setValueAtTime(S.mute?0:M.vol,AC.currentTime);
   document.querySelectorAll('.item').forEach(e=>e.getAnimations().forEach(a=>a.play()));
+  try{ if (CAM.rec && CAM.rec.state==='paused') CAM.rec.resume(); }catch(e){}
   B.paused=false; B.last=performance.now(); requestAnimationFrame(loop);
 }
 $('pauseBtn').addEventListener('pointerdown',e=>{ e.stopPropagation(); pause(); });
@@ -845,6 +851,7 @@ function end(win, timeout=false){
     else { $('resNext').textContent='Реванш'; $('resNext').onclick=()=>startBattle(i); }
   }
   $('resR').textContent=`+${reward} 🎸`;
+  recFinish($('resT').innerHTML.replace(/<br>/g,' '), win||(B.survival&&B.wave>1));
   S.coins+=reward; save();
   if (win||B.survival){ chord(40,1.2,true); sfx('cheer'); } else sfx('boo');
   setTimeout(()=>{ $('frame').classList.remove('solo'); go('result');
@@ -859,9 +866,260 @@ function share(){
   else note(txt);
 }
 
+/* ================= ВИДЕО-РЕАКЦИЯ =================
+   Необязательно: тумблер «🎥 Снимать себя». Фронталка в кружке, бой собирается
+   на <canvas> 720×1280 (9:16) + игровой звук + микрофон → MediaRecorder.
+   Ролик остаётся только на устройстве игрока: никуда не отправляется. */
+const CAM={stream:null,pending:null,rec:null,cv:null,ctx:null,timer:0,dest:null,micSrc:null,final:null,blob:null,url:null,mime:''};
+const RW=720, RH=1280, BAND=170;
+const STAGE=new Image(); STAGE.src='img/stage.webp';
+const MCLOGO=new Image(); MCLOGO.src='img/mc-logo.png';
+const recOK = ()=> !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder && HTMLCanvasElement.prototype.captureStream);
+
+function syncCamUI(){
+  const live=!!CAM.stream;
+  $('camSw').classList.toggle('on', !!S.cam);
+  $('camRow').classList.toggle('live', live);
+  $('arena').classList.toggle('camOn', live);
+  const b=$('camBtn'); b.textContent = S.cam ? '✕' : '🎥'; b.title = S.cam ? 'Выключить камеру' : 'Снимать себя';
+  $('recDot').style.display = CAM.rec ? 'block' : 'none';
+}
+function camAttach(){
+  document.querySelectorAll('video.camFeed').forEach(v=>{
+    if (v.srcObject!==CAM.stream) v.srcObject=CAM.stream;
+    if (CAM.stream) v.play().catch(()=>{});
+  });
+  syncCamUI();
+}
+function camAcquire(){
+  if (CAM.stream) return Promise.resolve(true);
+  if (CAM.pending) return CAM.pending;
+  if (!recOK()){ S.cam=false; save(); syncCamUI(); note('Запись видео тут не поддерживается. Играем без камеры.'); return Promise.resolve(false); }
+  const vid={facingMode:'user',width:{ideal:640},height:{ideal:640},frameRate:{ideal:30,max:30}};
+  const withMic = !(mic && mic.st && mic.st.active && !mic.shared);   // микрофон уже взят режимом «Крик» — второй раз не просим
+  const ask = a => navigator.mediaDevices.getUserMedia({video:vid, audio:a?{echoCancellation:true,noiseSuppression:false,autoGainControl:false}:false});
+  CAM.pending = ask(withMic).catch(e=> withMic && e && e.name!=='NotAllowedError' ? ask(false) : Promise.reject(e))
+    .then(st=>{
+      CAM.pending=null;
+      if (!S.cam){ st.getTracks().forEach(t=>t.stop()); return false; }   // успели выключить
+      CAM.stream=st; camAttach(); return true;
+    })
+    .catch(e=>{
+      CAM.pending=null; S.cam=false; save(); syncCamUI();
+      note(e && e.name==='NotAllowedError' ? 'Нет доступа к камере. Разреши его в настройках Telegram/браузера — а пока играем без камеры.'
+         : e && e.name==='NotFoundError' ? 'Фронтальная камера не найдена. Играем без камеры.'
+         : 'Камера сейчас недоступна. Играем без неё.');
+      return false;
+    });
+  return CAM.pending;
+}
+function camRelease(){
+  if (!CAM.stream) return;
+  CAM.stream.getTracks().forEach(t=>t.stop()); CAM.stream=null;
+  if (mic && mic.shared) mic=null;   // «Крик» слушал микрофон камеры — в следующий раз возьмёт свой
+  camAttach();
+}
+function toggleCam(){
+  audio();
+  if (S.cam){ S.cam=false; save(); recDiscard(); camRelease(); syncCamUI(); return; }
+  S.cam=true; save(); syncCamUI();
+  camAcquire().then(ok=>{ if (ok) recStart(); });
+}
+/* камера живёт только на экранах карьеры, боя и результата */
+function camOnScreen(id){
+  if (id!=='battle' && id!=='result' && CAM.rec && !CAM.final) recDiscard();
+  if (!['ladder','battle','result'].includes(id)) camRelease();
+  else if (S.cam && id==='ladder') camAcquire();
+  syncCamUI();
+}
+
+function pickMime(){
+  const c=['video/mp4;codecs="avc1.42E01E, mp4a.40.2"','video/mp4;codecs=avc1,mp4a','video/mp4','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
+  return c.find(m=>{ try{ return MediaRecorder.isTypeSupported(m) }catch(e){ return false } }) || '';
+}
+function recStart(){
+  if (!CAM.stream || !B || !B.started || B.over || CAM.rec || !AC) return;
+  recClear();
+  if (!CAM.cv){ CAM.cv=document.createElement('canvas'); CAM.cv.width=RW; CAM.cv.height=RH; CAM.ctx=CAM.cv.getContext('2d'); }
+  if (!CAM.dest){ CAM.dest=AC.createMediaStreamDestination(); masterOut.connect(CAM.dest); }
+  if (CAM.micSrc){ try{ CAM.micSrc.disconnect(); }catch(e){} CAM.micSrc=null; }
+  let at=CAM.stream.getAudioTracks().filter(t=>t.readyState==='live');
+  if (!at.length && mic && mic.st) at=mic.st.getAudioTracks().filter(t=>t.readyState==='live');
+  if (at.length){ CAM.micSrc=AC.createMediaStreamSource(new MediaStream(at)); const g=AC.createGain(); g.gain.value=1.3; CAM.micSrc.connect(g).connect(CAM.dest); }
+  recFrame();
+  const vs=CAM.cv.captureStream(30);
+  const ms=new MediaStream([...vs.getVideoTracks(), ...CAM.dest.stream.getAudioTracks()]);
+  CAM.mime=pickMime();
+  let rec;
+  try{ rec=new MediaRecorder(ms, CAM.mime?{mimeType:CAM.mime, videoBitsPerSecond:2500000, audioBitsPerSecond:128000}:undefined); }
+  catch(e){ try{ rec=new MediaRecorder(ms); }catch(e2){ vs.getTracks().forEach(t=>t.stop()); note('Не получилось начать запись видео. Играем дальше без неё.'); return; } }
+  const chunks=[]; CAM.final=null;
+  rec.ondataavailable=e=>{ if (e.data && e.data.size) chunks.push(e.data); };
+  rec.onstop=()=>{
+    vs.getTracks().forEach(t=>t.stop());
+    if (rec._discard || !chunks.length) return;
+    const type=((rec.mimeType||CAM.mime||'video/webm').split(';')[0]) || 'video/webm';
+    CAM.blob=new Blob(chunks,{type}); CAM.url=URL.createObjectURL(CAM.blob); CAM.final=null; renderRec();
+  };
+  CAM.rec=rec; rec.start(1000);
+  clearInterval(CAM.timer); CAM.timer=setInterval(recFrame, 1000/30);
+  syncCamUI();
+}
+function recStop(discard){
+  clearInterval(CAM.timer); CAM.timer=0;
+  const r=CAM.rec; CAM.rec=null;
+  if (r){ r._discard=discard; try{ if (r.state!=='inactive') r.stop(); }catch(e){} }
+  syncCamUI();
+}
+function recDiscard(){ recStop(true); CAM.final=null; recClear(); }
+function recClear(){
+  if (CAM.url) URL.revokeObjectURL(CAM.url);
+  CAM.url=null; CAM.blob=null; renderRec();
+}
+function recFinish(title, win){
+  if (!CAM.rec) return;
+  CAM.final={title, win, name:B.o.name, t:performance.now()};
+  renderRec();
+  setTimeout(()=>{ if (CAM.final) recStop(false); }, 2600);   // 0.5 с развязки + 2 с финальной карточки
+}
+
+/* ---- кадр ролика ---- */
+function rrect(c,x,y,w,h,r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
+function coverDraw(c,img,x,y,w,h){
+  const iw=img.naturalWidth, ih=img.naturalHeight; if(!iw||!ih) return;
+  const sc=Math.max(w/iw,h/ih), sw=w/sc, sh=h/sc; c.drawImage(img,(iw-sw)/2,(ih-sh)/2,sw,sh,x,y,w,h);
+}
+function fitText(c,txt,max,size,font){ let s=size; do{ c.font=`${s}px ${font}`; s-=2; }while(c.measureText(txt).width>max && s>12); }
+const FONT='"Russo One","Arial Black",sans-serif', BODYF='"Oswald","Arial Narrow",Arial,sans-serif';
+function recFrame(){
+  const c=CAM.ctx; if(!c || !B) return;
+  const fr=$('frame').getBoundingClientRect(), ar=$('arena'), aw=ar.offsetWidth, ah=ar.offsetHeight, vis=!!(aw&&ah);
+  if (!vis && !CAM.final) return;   // бой скрыт (уже экран результата) — дорисовываем только финальную карточку
+  const s=vis?Math.min(RW/aw,(RH-BAND)/ah):1, ox=vis?(RW-aw*s)/2:0, AH=ah*s, u=aw/100*s;   // u — 1cqw в пикселях ролика
+  const M=r=>({x:ox+(r.left-fr.left)*s, y:(r.top-fr.top)*s, w:r.width*s, h:r.height*s});
+  const arR=ar.getBoundingClientRect(), dx=vis?(arR.left-fr.left)*s:0, dy=vis?(arR.top-fr.top)*s:0;   // тряска сцены
+  const k=B.pos/100;
+  let g;
+  c.globalAlpha=1; c.globalCompositeOperation='source-over'; c.shadowBlur=0;
+  c.fillStyle='#07060a'; c.fillRect(0,0,RW,RH);
+  // сцена
+  if (STAGE.naturalWidth){ c.save(); c.translate(RW/2+dx-k*RW*.015, RH/2+dy); c.scale(1.08,1.08); coverDraw(c,STAGE,-RW/2,-RH/2,RW,RH); c.restore(); }
+  if (vis){
+  if (B.solo){ c.fillStyle='rgba(255,40,20,.12)'; c.fillRect(0,0,RW,RH); }
+  // спрайты (позиции, тряска, отлёт берутся прямо из DOM)
+  const spr=img=>{ if(!img.complete||!img.naturalWidth) return; const r=M(img.getBoundingClientRect()); if(r.w<2) return;
+    const sc=Math.min(r.w/img.naturalWidth,r.h/img.naturalHeight), w=img.naturalWidth*sc, h=img.naturalHeight*sc;
+    c.drawImage(img, r.x+(r.w-w)/2, r.y+r.h-h, w, h); };
+  const oa=parseFloat(getComputedStyle($('oppW')).opacity); c.globalAlpha=isNaN(oa)?1:oa; spr($('oppImg')); c.globalAlpha=1;
+  spr($('heroImg'));
+  // нотная дорожка и частицы — готовые канвасы игры
+  [$('track'),$('fx')].forEach(cv=>{ if(cv.width){ const r=M(cv.getBoundingClientRect()); if(r.w) c.drawImage(cv,r.x,r.y,r.w,r.h); } });
+  if (B.blind>0){ c.fillStyle='rgba(0,0,0,.82)'; c.fillRect(0,0,RW,AH); }
+  // плашки, реплики, усилители, «попапы» ударов
+  const warn=$('warn');
+  if (warn.style.display==='block'){ const r=M($('warnT').getBoundingClientRect()), pre=warn.classList.contains('pre'), t=$('warnT').textContent;
+    c.fillStyle=pre?'rgba(255,170,30,.92)':'rgba(255,30,60,.88)'; c.fillRect(0,r.y,RW,r.h);
+    c.fillStyle=pre?'#1a0d00':'#fff'; c.textAlign='center'; c.textBaseline='middle'; fitText(c,t,RW-40,Math.round(r.h*.5),FONT); c.fillText(t,RW/2,r.y+r.h/2); }
+  const sayEl=$('say');
+  if (sayEl.classList.contains('on')){ const r=M(sayEl.getBoundingClientRect()), fs=Math.round(3.6*u), lh=Math.round(fs*1.25), pad=Math.round(3*u);
+    c.fillStyle='#fff'; rrect(c,r.x,r.y,r.w,r.h,Math.round(3.5*u)); c.fill();
+    c.fillStyle='#111'; c.textAlign='left'; c.textBaseline='top'; c.font=`700 ${fs}px ${BODYF}`;
+    let line='', y=r.y+Math.round(2*u);
+    sayEl.textContent.split(' ').forEach(w=>{ const t=line?line+' '+w:w; if(c.measureText(t).width>r.w-pad*2 && line){ c.fillText(line,r.x+pad,y); y+=lh; line=w; } else line=t; });
+    c.fillText(line,r.x+pad,y); }
+  document.querySelectorAll('#arena .item').forEach(el=>{ const r=M(el.getBoundingClientRect()); c.textAlign='center'; c.textBaseline='middle'; c.font=`${Math.round(r.h*.55)}px sans-serif`;
+    c.shadowColor=el.classList.contains('bad')?'#ff3d6a':'#ffcf4a'; c.shadowBlur=24; c.fillText(el.textContent,r.x+r.w/2,r.y+r.h/2); c.shadowBlur=0; });
+  document.querySelectorAll('#arena .pop, #arena .judge, #combo').forEach(el=>{ if(!el.textContent) return; const cs=getComputedStyle(el), o=parseFloat(cs.opacity); if(!(o>0)) return;
+    const r=M(el.getBoundingClientRect()), x=r.x+r.w/2, y=r.y+r.h/2;
+    c.globalAlpha=o; c.font=`${Math.round(parseFloat(cs.fontSize)*s)}px ${FONT}`; c.textAlign='center'; c.textBaseline='middle';
+    c.lineWidth=6; c.strokeStyle='#000'; c.strokeText(el.textContent,x,y); c.fillStyle=cs.color; c.shadowColor=cs.color; c.shadowBlur=18; c.fillText(el.textContent,x,y); c.shadowBlur=0; c.globalAlpha=1; });
+  // HUD: имена, перетягивание, таймер
+  const p=(B.pos+100)/200, bx=50, bw=RW-100, by=92, bh=34, hn=(B.h.short||B.h.name).toUpperCase(), on=B.o.name.toUpperCase();
+  c.textBaseline='alphabetic'; c.lineWidth=5; c.strokeStyle='#000';
+  c.font=`28px ${FONT}`; c.textAlign='left'; c.strokeText(hn,bx,76); c.fillStyle='#b8f6ff'; c.fillText(hn,bx,76);
+  fitText(c,on,bw*.62,28,FONT); c.textAlign='right'; c.strokeText(on,bx+bw,76); c.fillStyle='#ffb3a8'; c.fillText(on,bx+bw,76);
+  c.fillStyle='#000'; rrect(c,bx-5,by-5,bw+10,bh+10,22); c.fill();
+  c.save(); rrect(c,bx,by,bw,bh,17); c.clip();
+  g=c.createLinearGradient(0,by,0,by+bh); g.addColorStop(0,'#ff8d78'); g.addColorStop(.5,'#e5221a'); g.addColorStop(1,'#7d0f09'); c.fillStyle=g; c.fillRect(bx,by,bw,bh);
+  g=c.createLinearGradient(0,by,0,by+bh); g.addColorStop(0,'#7ff3ff'); g.addColorStop(.5,'#14b9d6'); g.addColorStop(1,'#0a6f86'); c.fillStyle=g; c.fillRect(bx,by,bw*p,bh);
+  c.fillStyle='rgba(255,255,255,.3)'; c.fillRect(bx,by,bw,bh/2); c.restore();
+  c.fillStyle='#fff'; c.shadowColor='#fff'; c.shadowBlur=16; rrect(c,bx+bw*p-9,by-10,18,bh+20,6); c.fill(); c.shadowBlur=0;
+  const tt=B.survival?`ВОЛНА ${B.wave}`:String(Math.max(0,Math.ceil(B.t)));
+  c.textAlign='center'; c.font=`68px ${FONT}`; c.lineWidth=8; c.strokeText(tt,RW/2,by+bh+82); c.fillStyle=!B.survival&&B.t<=10?'#ff3b2b':'#fff'; c.fillText(tt,RW/2,by+bh+82);
+  // вспышка
+  const fl=document.querySelector('#arena .flash'); if (fl){ const o=parseFloat(getComputedStyle(fl).opacity)||0; if(o>0){ c.globalAlpha=o; c.fillStyle='#fff'; c.fillRect(0,0,RW,RH); c.globalAlpha=1; } }
+  }
+  // финальная карточка
+  const fa = !CAM.final ? 0 : !vis ? 1 : Math.max(0,Math.min(1,(performance.now()-CAM.final.t-500)/350));
+  if (fa>0){
+    const T=CAM.final.title.toUpperCase(), N=CAM.final.name.toUpperCase();
+    c.globalAlpha=fa; c.fillStyle='rgba(7,6,10,.86)'; c.fillRect(0,0,RW,RH);
+    const oi=$('oppImg'); if (oi.naturalWidth){ const sc=Math.min(520/oi.naturalWidth,560/oi.naturalHeight), w=oi.naturalWidth*sc, h=oi.naturalHeight*sc;
+      c.globalAlpha=fa*(CAM.final.win?.95:.8); c.drawImage(oi,(RW-w)/2,990-h,w,h); c.globalAlpha=fa; }
+    c.textAlign='center'; c.textBaseline='alphabetic'; fitText(c,T,RW-60,110,FONT);
+    g=c.createLinearGradient(0,240,0,340); g.addColorStop(0,'#fff'); g.addColorStop(.6,CAM.final.win?'#ffcf4a':'#c9c0d3'); g.addColorStop(1,CAM.final.win?'#ff8a1c':'#a99fb2');
+    c.lineWidth=12; c.strokeStyle='#6a0d06'; c.strokeText(T,RW/2,340); c.fillStyle=g; c.fillText(T,RW/2,340);
+    fitText(c,N,RW-80,38,FONT); c.fillStyle='#ffb3a8'; c.fillText(N,RW/2,400);
+    c.globalAlpha=1;
+  }
+  // нижняя плашка бренда
+  g=c.createLinearGradient(0,RH-BAND-60,0,RH); g.addColorStop(0,'rgba(7,6,10,0)'); g.addColorStop(.3,'rgba(7,6,10,.92)'); g.addColorStop(1,'#07060a'); c.fillStyle=g; c.fillRect(0,RH-BAND-60,RW,BAND+60);
+  if (MCLOGO.naturalWidth){ const h=74, w=MCLOGO.naturalWidth*h/MCLOGO.naturalHeight; c.drawImage(MCLOGO,(RW-w)/2,RH-BAND+18,w,h); }
+  c.textAlign='center'; c.textBaseline='alphabetic'; c.font=`32px ${FONT}`; c.fillStyle='#e0a084'; c.fillText('Биг Бау Вау · Music Core',RW/2,RH-30);
+  // кружок с лицом
+  const v=$('camVid');
+  if (CAM.stream && v.videoWidth){
+    const br=$('camBubble').getBoundingClientRect(); let cx, cy, R;
+    if (br.width){ const r=M(br); R=r.w/2*1.25; cx=Math.min(r.x+r.w/2,RW-R-14); cy=Math.min(r.y+r.h/2,RH-BAND-R-10); CAM.bub=[cx,cy,R]; }
+    else if (CAM.bub) [cx,cy,R]=CAM.bub; else { R=110; cx=RW-R-30; cy=RH-BAND-R-30; }
+    c.save(); c.beginPath(); c.arc(cx,cy,R,0,Math.PI*2); c.closePath(); c.clip();
+    c.translate(cx,cy); c.scale(-1,1); const side=Math.min(v.videoWidth,v.videoHeight);
+    c.drawImage(v,(v.videoWidth-side)/2,(v.videoHeight-side)/2,side,side,-R,-R,R*2,R*2); c.restore();
+    c.lineWidth=8; c.strokeStyle='#22e5ff'; c.shadowColor='#22e5ff'; c.shadowBlur=24; c.beginPath(); c.arc(cx,cy,R,0,Math.PI*2); c.stroke(); c.shadowBlur=0;
+  }
+}
+
+/* ---- ролик на экране результата ---- */
+const recExt = ()=> CAM.blob && /mp4/.test(CAM.blob.type) ? 'mp4' : 'webm';
+const recName = ()=> `big-bowwow-${new Date().toISOString().slice(0,19).replace(/[T:]/g,'-')}.${recExt()}`;
+function renderRec(){
+  const box=$('recBox'); if(!box) return;
+  if (CAM.url){
+    let canFile=false; try{ canFile=!!(navigator.share && navigator.canShare && navigator.canShare({files:[new File([CAM.blob],'v.'+recExt(),{type:CAM.blob.type})]})); }catch(e){}
+    box.innerHTML=`<div class="recBox"><video src="${CAM.url}" controls playsinline preload="metadata"></video>
+      <div class="acts"><b>🎬 Твой ролик готов</b>
+        ${canFile?'<button class="recB" onclick="recShare()">📤 Поделиться</button>':''}
+        <button class="recB ghost" onclick="recSave()">💾 Сохранить</button>
+        <small id="recHint">Видео только у тебя на устройстве. Выложи — это лучшая реклама игры 🤘</small></div></div>`;
+  } else if (CAM.final){
+    box.innerHTML='<div class="recBox wait"><b>🎬 Монтирую ролик…</b></div>';
+  } else box.innerHTML='';
+}
+function recHint(){
+  const h=$('recHint'); if(!h) return;
+  h.textContent='Не сохранилось? В Telegram так бывает: открой ролик на весь экран и удержи палец на видео — или сделай запись экрана телефона.';
+  h.style.color='var(--gold)';
+}
+async function recShare(){
+  if (!CAM.blob) return;
+  const file=new File([CAM.blob],recName(),{type:CAM.blob.type});
+  try{ await navigator.share({files:[file], text:'Отпугиваю соперников в «Биг Бау Вау» от Music Core 🤘 @big_bowwow_mc_bot'}); }
+  catch(e){
+    if (e && e.name==='AbortError') return;
+    try{ await navigator.share({files:[file]}); }catch(e2){ if(!e2 || e2.name!=='AbortError') recHint(); }
+  }
+}
+function recSave(){
+  if (!CAM.url) return;
+  const a=document.createElement('a'); a.href=CAM.url; a.download=recName(); a.rel='noopener';
+  document.body.appendChild(a); a.click(); a.remove();
+  if (TG) setTimeout(recHint, 600);   // WebView Telegram часто молча игнорирует скачивание
+}
+
 /* ================= ВВОД ================= */
 $('arena').addEventListener('pointerdown',()=>onTap());
 $('goat').addEventListener('pointerdown',e=>{ e.stopPropagation(); goat(); });
+$('camBtn').addEventListener('pointerdown',e=>{ e.stopPropagation(); toggleCam(); });
 document.addEventListener('keydown',e=>{ if(e.code==='Space'){ e.preventDefault(); onTap(); } if(e.code==='Enter') goat(); if(e.code==='Escape') (B&&B.paused?resume():pause()); });
 document.addEventListener('pointerdown',()=>{ const first=!AC; audio(); if(first && $('menu').classList.contains('on')) startLoop(100,.45); },{capture:true});
 

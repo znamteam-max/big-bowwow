@@ -120,3 +120,25 @@ canvas.track{position:absolute;left:0;right:0;bottom:2%;height:15%;width:100%;z-
 .say{top:46cqw}
 .superHint{font-family:var(--display);font-size:6.6cqw;line-height:1;letter-spacing:.3cqw;color:#e0a084;
   text-shadow:0 .5cqw 0 #3a1a10,0 0 4cqw rgba(224,160,132,.45)}
+
+/* ---- v10: видео-реакция (кружок с фронталкой, ролик после боя) ---- */
+.camRow{margin-top:-1cqw}
+.camRow .camMini{display:none;flex:none;width:11cqw;height:11cqw;border-radius:50%;object-fit:cover;transform:scaleX(-1);border:.5cqw solid var(--teal);background:#000}
+.camRow.live .camMini{display:block}
+.camBubble{position:absolute;right:11cqw;bottom:1.5cqw;width:24cqw;height:24cqw;border-radius:50%;overflow:hidden;z-index:15;display:none;pointer-events:none;
+  border:.8cqw solid var(--teal);background:#000;box-shadow:0 0 4cqw rgba(34,229,255,.5),0 1cqw 3cqw rgba(0,0,0,.6)}
+.camBubble video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block}
+.arena.camOn .camBubble{display:block}
+.recDot{display:none;position:absolute;left:50%;bottom:7%;transform:translateX(-50%);font-family:var(--display);font-size:2.2cqw;color:#fff;background:rgba(229,34,26,.85);padding:.2cqw 1.4cqw;border-radius:2cqw;animation:blink .6s infinite alternate}
+.camBtn{position:absolute;right:4cqw;bottom:2cqw;z-index:16;width:10cqw;height:10cqw;border-radius:50%;border:1px solid rgba(255,255,255,.2);background:var(--panel);color:#fff;font-size:4.4cqw;line-height:1;padding:0;cursor:pointer;pointer-events:auto;backdrop-filter:blur(6px)}
+.arena.camOn .camBtn{bottom:20cqw;right:10cqw;width:7.5cqw;height:7.5cqw;font-size:3.2cqw}
+.recBox{width:100%;display:flex;gap:3cqw;align-items:center;margin-top:2.6cqw;background:var(--panel);border:1px solid rgba(255,255,255,.1);border-radius:4cqw;padding:2.4cqw;backdrop-filter:blur(8px);animation:slideUp .45s cubic-bezier(.2,1.4,.4,1)}
+.recBox.wait{justify-content:center;padding:4cqw}
+.recBox.wait b{animation:blink .5s infinite alternate}
+.recBox b{font-family:var(--display);font-weight:400;font-size:4cqw}
+.recBox video{flex:none;width:21cqw;aspect-ratio:9/16;border-radius:2.4cqw;background:#000;object-fit:cover;pointer-events:auto}
+.recBox .acts{flex:1;display:flex;flex-direction:column;gap:1.8cqw;min-width:0}
+.recB{font-family:var(--display);font-size:3.8cqw;border:0;border-radius:2.6cqw;padding:2.6cqw;cursor:pointer;color:#fff;background:linear-gradient(180deg,#ff6a4a,#c5180f);box-shadow:0 .8cqw 0 #5a0904}
+.recB.ghost{background:linear-gradient(180deg,#3a3242,#1d1823);box-shadow:0 .8cqw 0 #000}
+.recB:active{transform:translateY(.6cqw);box-shadow:none}
+.recBox small{color:var(--mute);font-size:2.8cqw;line-height:1.3}

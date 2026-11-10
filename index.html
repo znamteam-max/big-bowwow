@@ -242,6 +242,7 @@ h2{font-family:var(--display);text-transform:uppercase;margin:9cqw 0 3cqw;font-s
   <div class="might" id="might"></div>
   <div class="modeSeg" id="modeSeg"></div>
   <div class="modeHint" id="modeHint"></div>
+  <div class="voiceRow camRow" id="camRow" onclick="toggleCam()"><video class="camFeed camMini" playsinline muted autoplay></video><div style="flex:1"><b>🎥 Снимать себя</b><span>Кружок с камерой в бою и ролик после боя. Видео остаётся только у тебя.</span></div><i id="camSw"></i></div>
   <div class="list" id="ladderList"></div>
   <div class="vignette"></div><div class="grain"></div>
 </section>
@@ -274,6 +275,8 @@ h2{font-family:var(--display);text-transform:uppercase;margin:9cqw 0 3cqw;font-s
     <div class="buffs" id="buffs"></div>
     <div class="say" id="say"></div>
     <div class="beat" id="beat"><div class="ring" id="ring"></div><div class="core" id="core"></div></div>
+    <div class="camBubble" id="camBubble"><video class="camFeed" id="camVid" playsinline muted autoplay></video><span class="recDot" id="recDot">REC</span></div>
+    <button class="camBtn" id="camBtn" aria-label="Снимать себя">🎥</button>
     <div class="mic" id="micMeter" style="display:none">🎤 ГОЛОС<i id="micLvl"></i></div>
     <div class="warn" id="warn"><b id="warnT"></b><i><u id="warnBar"></u></i></div>
     <div class="shout" id="shout">КРИЧИ!</div>
@@ -298,6 +301,7 @@ h2{font-family:var(--display);text-transform:uppercase;margin:9cqw 0 3cqw;font-s
   <div class="stats" id="resS"></div>
   <div class="reward" id="resR"></div>
   <div id="callBox" style="width:100%;display:flex;justify-content:center;z-index:5"></div>
+  <div id="recBox" style="width:100%;z-index:5"></div>
   <div style="flex:1"></div>
   <button class="btn" id="resNext">Дальше</button>
   <div class="rowbtns"><button class="btn ghost" onclick="share()">Поделиться</button><button class="btn ghost" onclick="go('menu')">В меню</button></div>
@@ -306,7 +310,7 @@ h2{font-family:var(--display);text-transform:uppercase;margin:9cqw 0 3cqw;font-s
 </section>
 
 </div>
-<link rel="stylesheet" href="extra.css?v=9">
-<script src="game.js?v=9"></script>
+<link rel="stylesheet" href="extra.css?v=10">
+<script src="game.js?v=10"></script>
 </body>
 </html>
