@@ -1,0 +1,81 @@
+/* ---- v3: бренд, меню без наложений, карьера, прокачка, обучение ---- */
+.mcTop{position:relative;z-index:16;height:12cqw;margin-top:1cqw;filter:drop-shadow(0 1cqw 2cqw rgba(0,0,0,.7))}
+.mcTop.res{height:10cqw;margin-top:2cqw}
+.mcMark{position:absolute;right:3cqw;bottom:19%;height:8cqw;z-index:15;opacity:.9;filter:drop-shadow(0 .5cqw 1cqw rgba(0,0,0,.8));pointer-events:none}
+
+/* меню: название сверху, герой строго ниже, кнопки внизу */
+#menu .logo{font-size:11cqw;margin:2cqw 0 0;white-space:nowrap}
+#menu .logo small{font-size:3.6cqw;margin-top:1.6cqw}
+#menu .menuHero{bottom:31%;height:39%}
+#menu .menuSpot{bottom:29%}
+#menu .menuBottom{padding-top:4cqw}
+
+/* карьера */
+.might{z-index:5;width:100%;display:flex;justify-content:space-between;align-items:center;background:var(--panel);border:1px solid rgba(255,255,255,.1);border-radius:3cqw;padding:2.4cqw 3.5cqw;margin-bottom:2.4cqw;font-family:var(--display);font-size:3.6cqw;backdrop-filter:blur(8px)}
+.might b{color:var(--teal);font-size:5cqw}
+.might button{font-family:var(--display);font-size:3.4cqw;border:0;border-radius:2.4cqw;padding:2cqw 3cqw;background:var(--gold);color:#3a2600;cursor:pointer}
+.voiceRow{z-index:5;width:100%;display:flex;align-items:center;gap:3cqw;background:var(--panel);border:1px solid rgba(255,255,255,.1);border-radius:3cqw;padding:2.4cqw 3.5cqw;margin-bottom:3cqw;cursor:pointer;backdrop-filter:blur(8px)}
+.voiceRow b{font-family:var(--display);font-weight:400;font-size:3.8cqw;display:block}
+.voiceRow span{color:var(--mute);font-size:3cqw;line-height:1.3;display:block;margin-top:.6cqw}
+.voiceRow i{flex:none;width:12cqw;height:6.6cqw;border-radius:4cqw;background:#3a3242;position:relative;transition:background .2s}
+.voiceRow i::after{content:"";position:absolute;top:.8cqw;left:.8cqw;width:5cqw;height:5cqw;border-radius:50%;background:#fff;transition:left .2s}
+.voiceRow i.on{background:var(--good)}.voiceRow i.on::after{left:6.2cqw}
+.act{z-index:5;display:flex;align-items:baseline;justify-content:space-between;margin:3cqw .5cqw .5cqw;font-family:var(--display);text-transform:uppercase}
+.act b{font-size:4.6cqw;color:var(--gold);font-weight:400}
+.act span{font-size:3cqw;color:var(--mute)}
+.act.locked b{color:var(--mute)}
+.req{display:inline-block;margin-top:1cqw;font-family:var(--display);font-size:2.8cqw;padding:.4cqw 1.8cqw;border-radius:2cqw;background:rgba(34,229,255,.15);color:var(--teal)}
+.req.low{background:rgba(255,61,106,.18);color:var(--bad)}
+
+/* магазин */
+.shopH{z-index:5;align-self:flex-start;font-family:var(--display);text-transform:uppercase;color:var(--gold);font-size:4cqw;margin:2cqw .5cqw 0}
+.lvl{display:flex;gap:.8cqw;margin-top:1.2cqw;flex-wrap:wrap}
+.lvl u{width:3.2cqw;height:1.6cqw;border-radius:.8cqw;background:#3a3242;text-decoration:none}
+.lvl u.on{background:var(--teal);box-shadow:0 0 1.5cqw var(--teal)}
+.row .st.max{color:var(--good)}
+.row.poor .st{color:var(--mute)}
+
+/* бой: доп. эффекты */
+.shout{position:absolute;left:0;right:0;bottom:22%;text-align:center;z-index:15;font-family:var(--display);font-size:9cqw;color:var(--good);text-shadow:0 0 4cqw var(--good),0 .6cqw 0 #000;display:none;pointer-events:none;animation:blink .35s infinite alternate}
+.arena.dark::after{content:"";position:absolute;inset:0;background:rgba(0,0,0,.82);z-index:11;pointer-events:none}
+.cmt{position:absolute;z-index:16;max-width:52cqw;background:#fff;color:#111;border-radius:3cqw;padding:2cqw 5cqw 2cqw 3cqw;font-family:var(--body);font-weight:700;font-size:3.6cqw;box-shadow:0 1.5cqw 4cqw rgba(0,0,0,.6);cursor:pointer;pointer-events:auto}
+.cmt small{display:block;color:#888;font-size:2.6cqw;font-weight:500}
+.cmt::before{content:"✕";position:absolute;right:1.6cqw;top:.6cqw;font-size:2.6cqw;color:#999}
+.buffs span.debuff{border-color:rgba(255,61,106,.6);color:#ffb3c2}
+
+/* обучение */
+.tut{position:absolute;inset:0;z-index:40;background:rgba(5,4,8,.9);display:flex;flex-direction:column;justify-content:center;padding:7cqw;backdrop-filter:blur(4px)}
+.tut h3{font-family:var(--display);font-weight:400;font-size:7cqw;margin:0 0 4cqw;text-transform:uppercase;color:var(--gold)}
+.tut p{display:flex;gap:3cqw;margin:0 0 3.4cqw;font-size:4cqw;line-height:1.35}
+.tut p b{flex:none;font-size:7cqw;line-height:1}
+.tut em{color:var(--gold);font-style:normal}
+
+/* СМС от Джеймса */
+.imsg{z-index:5;width:88%;background:#fff;color:#000;border-radius:5cqw;overflow:hidden;margin-top:3cqw;font-family:-apple-system,"SF Pro Text","Segoe UI",Arial,sans-serif;box-shadow:0 3cqw 10cqw rgba(0,0,0,.7);animation:slideUp .5s cubic-bezier(.2,1.4,.4,1)}
+.imsg .bar{display:flex;flex-direction:column;align-items:center;padding:2.6cqw 0 2cqw;background:#f6f6f8;border-bottom:1px solid #e3e3e8}
+.imsg .av{width:11cqw;height:11cqw;border-radius:50%;background:linear-gradient(180deg,#a3a8b4,#80858f);color:#fff;font-weight:600;font-size:5cqw;display:flex;align-items:center;justify-content:center}
+.imsg .who{font-size:3.4cqw;margin-top:1cqw;color:#000}
+.imsg .body{padding:2.4cqw 3.5cqw 3.5cqw;display:flex;flex-direction:column;align-items:flex-start}
+.imsg .ts{align-self:center;color:#8e8e93;font-size:2.8cqw;margin-bottom:2cqw}
+.imsg .photo{width:30%;aspect-ratio:3/4;border-radius:4.5cqw;overflow:hidden;position:relative;background:url(img/stage.webp) center/cover}
+.imsg .photo img{position:absolute;bottom:-4%;left:-14%;height:112%}
+.imsg .bub{position:relative;background:#e9e9eb;border-radius:4.5cqw;padding:2.4cqw 3.6cqw;margin-top:1.4cqw;font-size:3.9cqw;line-height:1.3;max-width:82%}
+.imsg .bub nobr{white-space:nowrap}
+.quote{z-index:5;width:88%;margin-top:3cqw;background:var(--panel);border:1px solid rgba(255,255,255,.1);border-radius:4cqw;padding:3.4cqw 4cqw;display:flex;gap:3cqw;align-items:center;backdrop-filter:blur(8px);animation:slideUp .45s cubic-bezier(.2,1.4,.4,1)}
+.quote .face{width:15cqw;height:15cqw;border-radius:50%;flex:none;background-repeat:no-repeat;background-color:#120e17;border:.6cqw solid var(--acc)}
+.quote div b{display:block;font-family:var(--display);font-weight:400;font-size:3.2cqw;color:var(--mute);text-transform:uppercase}
+.quote div span{font-size:4.2cqw}
+
+/* ---- v4: режимы, пауза, нотная дорожка ---- */
+.modeSeg{z-index:5;width:100%;display:flex;gap:1.6cqw;background:var(--panel);border:1px solid rgba(255,255,255,.1);border-radius:3.5cqw;padding:1.4cqw;backdrop-filter:blur(8px)}
+.modeSeg button{flex:1;border:0;border-radius:2.6cqw;padding:2.6cqw 1cqw;background:transparent;color:var(--mute);font-family:var(--display);font-size:3.6cqw;cursor:pointer}
+.modeSeg button.on{background:linear-gradient(180deg,#ff6a4a,#c5180f);color:#fff;box-shadow:0 0 4cqw rgba(255,59,43,.4)}
+.modeHint{z-index:5;width:100%;color:var(--mute);font-size:3.1cqw;line-height:1.35;margin:1.6cqw .5cqw 2.4cqw}
+.timerRow{position:relative;align-items:center}
+.pauseBtn{position:absolute;left:0;top:.4cqw;width:10cqw;height:10cqw;border-radius:50%;border:1px solid rgba(255,255,255,.2);background:var(--panel);color:#fff;font-size:3.6cqw;cursor:pointer;backdrop-filter:blur(6px);z-index:16;pointer-events:auto}
+.song{position:absolute;right:0;top:1.6cqw;max-width:34cqw;text-align:right;font-family:var(--display);font-size:2.8cqw;color:var(--teal);line-height:1.2;text-shadow:0 1px 2px #000}
+.song small{display:block;color:var(--mute);font-size:2.4cqw}
+canvas.track{position:absolute;left:0;right:0;bottom:2%;height:15%;width:100%;z-index:13;pointer-events:none}
+.pause{position:absolute;inset:0;z-index:45;background:rgba(5,4,8,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8cqw;backdrop-filter:blur(5px)}
+.pause h3{font-family:var(--display);font-weight:400;font-size:10cqw;margin:0 0 6cqw;color:#fff;text-shadow:0 0 5cqw var(--acc)}
+.judge{position:absolute;left:16%;bottom:19%;z-index:15;font-family:var(--display);font-size:5cqw;transform:translateX(-50%);pointer-events:none;text-shadow:0 .5cqw 0 #000}
