@@ -112,3 +112,11 @@ canvas.track{position:absolute;left:0;right:0;bottom:2%;height:15%;width:100%;z-
 .tipCard p{margin:0 0 2.6cqw;font-size:3.9cqw;line-height:1.38}
 .tipCard em{color:var(--gold);font-style:normal}
 .tipRing{position:absolute;z-index:1;border:1cqw solid var(--gold);border-radius:4cqw;box-shadow:0 0 6cqw var(--gold);animation:blink .5s infinite alternate;pointer-events:none}
+
+/* ---- v9: плашки атаки выше героев, MUSIC CORE METER ---- */
+.warn{top:20%}
+.warn.pre b{font-size:4.2cqw;padding:1.6cqw 4cqw}
+.warn.hit b{font-size:5.6cqw;padding:1.6cqw 4cqw}
+.say{top:46cqw}
+.superHint{font-family:var(--display);font-size:6.6cqw;line-height:1;letter-spacing:.3cqw;color:#e0a084;
+  text-shadow:0 .5cqw 0 #3a1a10,0 0 4cqw rgba(224,160,132,.45)}
