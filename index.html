@@ -202,8 +202,8 @@ h2{font-family:var(--display);text-transform:uppercase;margin:9cqw 0 3cqw;font-s
   <div class="bg blur"></div>
   <div class="beams" data-beams></div><div class="haze"></div>
   <div class="topbar"><button class="icon snd" onclick="toggleMute()">🔊</button><div class="chip">🎸 <span class="cn">0</span></div></div>
-  <img class="mcTop" src="img/mc-logo.png" alt="Music Core">
   <div class="logo">Биг Бау Вау<small>отпугни их всех</small></div>
+  <img class="mcTop menuMc" src="img/mc-logo.png" alt="Music Core">
   <div class="menuSpot"></div>
   <img class="menuHero" id="menuHero" src="img/hero.webp" alt="">
   <div class="menuBottom">
@@ -277,12 +277,15 @@ h2{font-family:var(--display);text-transform:uppercase;margin:9cqw 0 3cqw;font-s
     <div class="mic" id="micMeter" style="display:none">🎤 ГОЛОС<i id="micLvl"></i></div>
     <div class="warn" id="warn"><b id="warnT"></b><i><u id="warnBar"></u></i></div>
     <div class="shout" id="shout">КРИЧИ!</div>
-    <img class="mcMark" src="img/mc-logo.png" alt="Music Core">
     <div class="grain"></div>
   </div>
   <div class="bottom">
-    <div class="furyWrap"><small>ЯРОСТЬ</small><div class="fury"><i id="fury"></i></div></div>
-    <button class="goat" id="goat">🤘 КОЗА</button>
+    <div class="superHint" id="superHint">Попадай — логотип <b>Music Core</b> заполняется.<br>Полный — жми на него!</div>
+    <button class="mcSuper" id="goat" aria-label="Суперудар Music Core">
+      <img class="mcOff" src="img/mc-logo.png" alt="">
+      <img class="mcOn" id="fury" src="img/mc-logo.png" alt="">
+      <span class="mcPct" id="mcPct">0%</span>
+    </button>
   </div>
 </section>
 
@@ -303,7 +306,7 @@ h2{font-family:var(--display);text-transform:uppercase;margin:9cqw 0 3cqw;font-s
 </section>
 
 </div>
-<link rel="stylesheet" href="extra.css">
-<script src="game.js"></script>
+<link rel="stylesheet" href="extra.css?v=6">
+<script src="game.js?v=6"></script>
 </body>
 </html>

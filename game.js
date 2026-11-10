@@ -65,11 +65,11 @@ const UPG = [
   {id:'metro',  em:'⏱️', name:'Метроном',         desc:'Ритм: окно попадания шире',               max:6,  base:50, k:1.55},
   {id:'roadie', em:'🧑‍🔧', name:'Роуди',           desc:'Кликер: +1 автоудар в секунду',           max:8,  base:50, k:1.5},
   {id:'wall',   em:'🧱', name:'Стена кабинетов',  desc:'Атаки соперников слабее на 7%',           max:8,  base:50, k:1.5},
-  {id:'pick',   em:'🤘', name:'Медиатор ярости',  desc:'«Коза» копится на 15% быстрее',          max:6,  base:45, k:1.5},
+  {id:'pick',   em:'⭐', name:'Медиатор ярости',  desc:'Логотип Music Core заполняется на 15% быстрее',          max:6,  base:45, k:1.5},
 ];
 const SHOP = [
   {id:'warm',  em:'🔥', name:'Разогрев',        desc:'Старт с перевесом +20',        price:60},
-  {id:'goat',  em:'🤘', name:'Заряженная коза', desc:'«Коза» готова со старта',      price:80},
+  {id:'goat',  em:'⭐', name:'Заряженный Music Core', desc:'Суперудар готов со старта', price:80},
   {id:'guard', em:'🛡️', name:'Охранник',        desc:'Блокирует первую атаку',       price:50},
 ];
 const ITEMS = [
@@ -484,7 +484,7 @@ function enter(used){
 function tutorial(mode, cb){
   const d=document.createElement('div'); d.className='tut';
   const common=`<p><b>⚠️</b><span>Когда соперник атакует — <em>бей часто</em> (${mode==='rhythm'?'8':'10'} ударов за секунду), чтобы отбить. Не отбил — толчок и пакость.</span></p>
-    <p><b>🤘</b><span><em>«Коза»</em> — суперудар ×2 на 4 секунды. Жми, когда шкала ярости полная.</span></p>
+    <p><b>⭐</b><span><em>Логотип Music Core</em> внизу заполняется цветом от твоих ударов. Заполнился — <em>жми на него</em>: суперудар ×2 на 4 секунды.</span></p>
     <p><b>⏱️</b><span>30 секунд, чтобы <em>дожать соперника до края</em>. Он давит сильнее к концу боя.</span></p>
     <p><b>🔊</b><span>Каждый следующий соперник сильнее — прокачивай аппарат в <em>Магазине</em>.</span></p>`;
   const head = mode==='rhythm'
@@ -601,7 +601,7 @@ function onTap(){
 function goat(){
   if(!B||!B.started||B.over||B.paused||B.fury<100||B.goatT>0) return;
   B.fury=0; B.goatT=4; B.pos+=6; chord(40,1,true); sfx('feedback'); sfx('cheer'); sfx('boom'); haptic('heavy');
-  pop('🤘 КОЗА! ×2','#ff3b2b',true); flash(); punch(); pyro();
+  pop('MUSIC CORE! ×2','#e0a084',true); flash(); punch(); pyro();
 }
 function pyro(){
   const W=fx.W(), H=fx.H();
@@ -727,7 +727,9 @@ function draw(){
   const p=(B.pos+100)/2;
   $('tugMe').style.width=p+'%'; $('tugThem').style.width=(100-p)+'%'; $('knot').style.left=p+'%';
   const tm=$('timer'); tm.textContent=B.survival?`ВОЛНА ${B.wave}`:Math.max(0,Math.ceil(B.t)); tm.classList.toggle('hot',!B.survival&&B.t<=10);
-  $('fury').style.width=B.fury+'%'; $('goat').classList.toggle('ready',B.fury>=100);
+  const gb=$('goat'); $('fury').style.clipPath=`inset(${100-(B.goatT>0?100:B.fury)}% 0 0 0)`;
+  gb.classList.toggle('ready',B.fury>=100&&B.goatT<=0); gb.classList.toggle('active',B.goatT>0);
+  $('mcPct').textContent = B.goatT>0 ? 'ЖАРИТ!' : B.fury>=100 ? 'ЖМИ!' : Math.floor(B.fury)+'%';
   $('combo').textContent=B.mode==='rhythm'&&B.combo>1?`КОМБО ${B.combo}${comboMult(B.combo)>1?'  ·  ×'+comboMult(B.combo):''}`:'';
   $('arena').classList.toggle('dark',B.blind>0);
   const k=B.pos/100, ow=$('oppW');
@@ -738,7 +740,7 @@ function draw(){
   $('heroW').classList.toggle('goatOn',B.goatT>0);
   const bf=[], db=[];
   if(B.amp>0) bf.push(`🔊 ${Math.ceil(B.amp)}`); if(B.od>0) bf.push(`⚡ ${Math.ceil(B.od)}`);
-  if(B.goatT>0) bf.push(`🤘 ${Math.ceil(B.goatT)}`); if(B.shield) bf.push('🛡️');
+  if(B.goatT>0) bf.push(`MC ×2 ${Math.ceil(B.goatT)}`); if(B.shield) bf.push('🛡️');
   if(B.broken>0) db.push(`💔 ${Math.ceil(B.broken)}`); if(B.mute>0) db.push(`🔇 ${Math.ceil(B.mute)}`);
   if(B.glitch>0) db.push(`🎚️ ${Math.ceil(B.glitch)}`); if(B.disarm>0) db.push('🚫');
   $('buffs').innerHTML=bf.map(x=>`<span>${x}</span>`).join('')+db.map(x=>`<span class="debuff">${x}</span>`).join('');
