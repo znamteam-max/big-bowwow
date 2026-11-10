@@ -85,6 +85,9 @@ const MODES = {
   click: {name:'👆 Кликер', hint:'Просто тапай как можно быстрее. Ритм не нужен — нужны скорость и прокачка: усилитель и роуди.'},
   voice: {name:'🎤 Крик',   hint:'Кричи в микрофон «ХЕЙ!». Каждый отдельный крик — удар, громче = сильнее. Тапы отключены.'},
 };
+/* Ссылка для «Поделиться»: пост Music Core с историей и игрой. Пока пусто — делимся ботом. */
+const POST_URL = '';
+const SHARE_LINK = () => POST_URL || 'https://t.me/big_bowwow_mc_bot';
 const HATE = ['Кринж 🤡','Раньше было лучше','Продались','Это автотюн?','Отписка','Мой кот играет лучше','Где новый альбом?','Скучно 💤'];
 [...OPPS.map(o=>o.img),'img/hero.webp','img/stage.webp','img/mc-logo.png'].forEach(s=>{const i=new Image(); i.src=s});
 
@@ -339,10 +342,12 @@ function buildSong(o, startAt, seconds=32){
 }
 
 /* ================= ЧАСТИЦЫ / FX ================= */
+/* во время записи ролика частицы и дорожка рисуются в 1x — вчетверо меньше пикселей и для игры, и для копии в ролик */
+const fxDpr = ()=> window.recHook ? 1 : Math.min(2,window.devicePixelRatio||1);
 function makeFX(canvas){
   const ctx=canvas.getContext('2d'); const P=[], R=[];
-  let W=0,H=0; const dpr=Math.min(2,window.devicePixelRatio||1);
-  function size(){ const r=canvas.getBoundingClientRect(); if(r.width&&(r.width!==W||r.height!==H)){ W=r.width;H=r.height; canvas.width=W*dpr; canvas.height=H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);} }
+  let W=0,H=0,D=0;
+  function size(){ const r=canvas.getBoundingClientRect(), dpr=fxDpr(); if(r.width&&(r.width!==W||r.height!==H||dpr!==D)){ W=r.width;H=r.height;D=dpr; canvas.width=W*dpr; canvas.height=H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);} }
   const api={
     W:()=>W, H:()=>H,
     add(p){ if(P.length<600) P.push(Object.assign({life:1,decay:1,g:0,drag:.98,size:3,rot:0,vr:0,type:'dot'},p)); },
@@ -372,12 +377,12 @@ const ambient = { target:null, fx:new Map(), spark(){ const f=this.get(); if(f) 
 
 /* ---- нотная дорожка (canvas) ---- */
 const trk = $('track'), tctx = trk.getContext('2d');
-let TW=0, TH=0;
+let TW=0, TH=0, TD=0;
 const HITX = .17;          // кольцо попадания — доля ширины
 const LEAD = 1.6;          // сколько секунд нота едет до кольца
 function drawTrack(){
-  const r=trk.getBoundingClientRect(), dpr=Math.min(2,window.devicePixelRatio||1);
-  if (r.width && (r.width!==TW||r.height!==TH)){ TW=r.width; TH=r.height; trk.width=TW*dpr; trk.height=TH*dpr; tctx.setTransform(dpr,0,0,dpr,0,0); }
+  const r=trk.getBoundingClientRect(), dpr=fxDpr();
+  if (r.width && (r.width!==TW||r.height!==TH||dpr!==TD)){ TW=r.width; TH=r.height; TD=dpr; trk.width=TW*dpr; trk.height=TH*dpr; tctx.setTransform(dpr,0,0,dpr,0,0); }
   tctx.clearRect(0,0,TW,TH);
   if (!B || B.mode!=='rhythm' || !B.notes || B.blind>0) return;
   const now = B.paused ? B.pauseAt : AC.currentTime, cy=TH*.5, hx=TW*HITX, speed=(TW*(1-HITX)+20)/LEAD;
@@ -406,6 +411,7 @@ function drawTrack(){
 }
 (function tick(){
   fx.step(); drawTrack();
+  if (window.recHook) window.recHook();
   const f=ambient.get();
   if (f){ if(Math.random()<.25) f.add({x:Math.random()*f.W(),y:f.H()+5,vx:(Math.random()-.5)*.4,vy:-.6-Math.random()*1.2,color:Math.random()<.5?'#ff8a1c':'#22e5ff',size:1+Math.random()*2,decay:.35,drag:1}); f.step(); }
   requestAnimationFrame(tick);
@@ -860,7 +866,7 @@ function end(win, timeout=false){
 }
 function share(){
   const txt = B&&B.survival ? `Я отпугнул ${B.wave-1} соперников в «Биг Бау Вау» от Music Core 🤘 Побьёшь?` : `Я дошёл до соперника «${OPPS[Math.min(S.beaten,OPPS.length-1)].name}» в «Биг Бау Вау» от Music Core 🤘`;
-  const url = location.href;
+  const url = SHARE_LINK();
   if (TG) TG.openTelegramLink('https://t.me/share/url?url='+encodeURIComponent(url)+'&text='+encodeURIComponent(txt));
   else if (navigator.share) navigator.share({text:txt,url}).catch(()=>{});
   else note(txt);
@@ -871,7 +877,7 @@ function share(){
    на <canvas> 720×1280 (9:16) + игровой звук + микрофон → MediaRecorder.
    Ролик остаётся только на устройстве игрока: никуда не отправляется. */
 const CAM={stream:null,pending:null,rec:null,cv:null,ctx:null,timer:0,dest:null,micSrc:null,final:null,blob:null,url:null,mime:''};
-const RW=720, RH=1280, BAND=170;
+const RW=720, RH=1280, BAND=170, RS=.75;   // разметка в 720×1280, сам ролик 540×960 (Telegram всё равно пережимает до ~464×848)
 const STAGE=new Image(); STAGE.src='img/stage.webp';
 const MCLOGO=new Image(); MCLOGO.src='img/mc-logo.png';
 const recOK = ()=> !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder && HTMLCanvasElement.prototype.captureStream);
@@ -895,7 +901,7 @@ function camAcquire(){
   if (CAM.stream) return Promise.resolve(true);
   if (CAM.pending) return CAM.pending;
   if (!recOK()){ S.cam=false; save(); syncCamUI(); note('Запись видео тут не поддерживается. Играем без камеры.'); return Promise.resolve(false); }
-  const vid={facingMode:'user',width:{ideal:640},height:{ideal:640},frameRate:{ideal:30,max:30}};
+  const vid={facingMode:'user',width:{ideal:360},height:{ideal:360},frameRate:{ideal:24,max:30}};
   const withMic = !(mic && mic.st && mic.st.active && !mic.shared);   // микрофон уже взят режимом «Крик» — второй раз не просим
   const ask = a => navigator.mediaDevices.getUserMedia({video:vid, audio:a?{echoCancellation:true,noiseSuppression:false,autoGainControl:false}:false});
   CAM.pending = ask(withMic).catch(e=> withMic && e && e.name!=='NotAllowedError' ? ask(false) : Promise.reject(e))
@@ -940,7 +946,7 @@ function pickMime(){
 function recStart(){
   if (!CAM.stream || !B || !B.started || B.over || CAM.rec || !AC) return;
   recClear();
-  if (!CAM.cv){ CAM.cv=document.createElement('canvas'); CAM.cv.width=RW; CAM.cv.height=RH; CAM.ctx=CAM.cv.getContext('2d'); }
+  if (!CAM.cv){ CAM.cv=document.createElement('canvas'); CAM.cv.width=RW*RS; CAM.cv.height=RH*RS; CAM.ctx=CAM.cv.getContext('2d',{alpha:false}); }
   if (!CAM.dest){ CAM.dest=AC.createMediaStreamDestination(); masterOut.connect(CAM.dest); }
   if (CAM.micSrc){ try{ CAM.micSrc.disconnect(); }catch(e){} CAM.micSrc=null; }
   let at=CAM.stream.getAudioTracks().filter(t=>t.readyState==='live');
@@ -951,7 +957,7 @@ function recStart(){
   const ms=new MediaStream([...vs.getVideoTracks(), ...CAM.dest.stream.getAudioTracks()]);
   CAM.mime=pickMime();
   let rec;
-  try{ rec=new MediaRecorder(ms, CAM.mime?{mimeType:CAM.mime, videoBitsPerSecond:2500000, audioBitsPerSecond:128000}:undefined); }
+  try{ rec=new MediaRecorder(ms, CAM.mime?{mimeType:CAM.mime, videoBitsPerSecond:1500000, audioBitsPerSecond:128000}:undefined); }
   catch(e){ try{ rec=new MediaRecorder(ms); }catch(e2){ vs.getTracks().forEach(t=>t.stop()); note('Не получилось начать запись видео. Играем дальше без неё.'); return; } }
   const chunks=[]; CAM.final=null;
   rec.ondataavailable=e=>{ if (e.data && e.data.size) chunks.push(e.data); };
@@ -962,11 +968,19 @@ function recStart(){
     CAM.blob=new Blob(chunks,{type}); CAM.url=URL.createObjectURL(CAM.blob); CAM.final=null; renderRec();
   };
   CAM.rec=rec; rec.start(1000);
-  clearInterval(CAM.timer); CAM.timer=setInterval(recFrame, 1000/30);
+  CAM.gap=1000/30; CAM.ema=0; CAM.lastF=0; window.recHook=recTick;
   syncCamUI();
 }
+/* кадр ролика рисуется в том же requestAnimationFrame, что и игра (раскладка уже посчитана),
+   не чаще 30 раз в секунду; если телефон не успевает — сам снижает до 24 или 20 кадров */
+function recTick(){
+  const now=performance.now(); if (now-CAM.lastF < CAM.gap-4) return;
+  CAM.lastF=now; recFrame(); const dt=performance.now()-now;
+  CAM.ema = CAM.ema ? CAM.ema*.9+dt*.1 : dt;
+  CAM.gap = CAM.ema>14 ? 1000/20 : CAM.ema>9 ? 1000/24 : CAM.ema<6 ? 1000/30 : CAM.gap;
+}
 function recStop(discard){
-  clearInterval(CAM.timer); CAM.timer=0;
+  window.recHook=null;
   const r=CAM.rec; CAM.rec=null;
   if (r){ r._discard=discard; try{ if (r.state!=='inactive') r.stop(); }catch(e){} }
   syncCamUI();
@@ -989,6 +1003,21 @@ function coverDraw(c,img,x,y,w,h){
   const iw=img.naturalWidth, ih=img.naturalHeight; if(!iw||!ih) return;
   const sc=Math.max(w/iw,h/ih), sw=w/sc, sh=h/sc; c.drawImage(img,(iw-sw)/2,(ih-sh)/2,sw,sh,x,y,w,h);
 }
+/* статичные слои рисуются один раз и дальше только копируются */
+function layer(w,h,draw){ const cv=document.createElement('canvas'); cv.width=Math.round(w*RS); cv.height=Math.round(h*RS); const c=cv.getContext('2d'); c.scale(RS,RS); draw(c); return cv; }
+function stageLayer(){
+  if (!CAM.bgL && STAGE.naturalWidth) CAM.bgL=layer(RW*1.08,RH*1.08,c=>coverDraw(c,STAGE,0,0,RW*1.08,RH*1.08));
+  return CAM.bgL;
+}
+function bandLayer(){
+  if (CAM.bandL) return CAM.bandL;
+  if (!MCLOGO.naturalWidth || !(document.fonts && document.fonts.check('32px "Russo One"'))) return null;
+  return CAM.bandL=layer(RW,BAND+60,c=>{
+    const g=c.createLinearGradient(0,0,0,BAND+60); g.addColorStop(0,'rgba(7,6,10,0)'); g.addColorStop(.3,'rgba(7,6,10,.92)'); g.addColorStop(1,'#07060a'); c.fillStyle=g; c.fillRect(0,0,RW,BAND+60);
+    const h=74, w=MCLOGO.naturalWidth*h/MCLOGO.naturalHeight; c.drawImage(MCLOGO,(RW-w)/2,78,w,h);
+    c.textAlign='center'; c.font=`32px ${FONT}`; c.fillStyle='#e0a084'; c.fillText('Биг Бау Вау · Music Core',RW/2,BAND+30);
+  });
+}
 function fitText(c,txt,max,size,font){ let s=size; do{ c.font=`${s}px ${font}`; s-=2; }while(c.measureText(txt).width>max && s>12); }
 const FONT='"Russo One","Arial Black",sans-serif', BODYF='"Oswald","Arial Narrow",Arial,sans-serif';
 function recFrame(){
@@ -1000,17 +1029,17 @@ function recFrame(){
   const arR=ar.getBoundingClientRect(), dx=vis?(arR.left-fr.left)*s:0, dy=vis?(arR.top-fr.top)*s:0;   // тряска сцены
   const k=B.pos/100;
   let g;
-  c.globalAlpha=1; c.globalCompositeOperation='source-over'; c.shadowBlur=0;
-  c.fillStyle='#07060a'; c.fillRect(0,0,RW,RH);
+  c.setTransform(RS,0,0,RS,0,0); c.globalAlpha=1; c.globalCompositeOperation='source-over'; c.shadowBlur=0;
   // сцена
-  if (STAGE.naturalWidth){ c.save(); c.translate(RW/2+dx-k*RW*.015, RH/2+dy); c.scale(1.08,1.08); coverDraw(c,STAGE,-RW/2,-RH/2,RW,RH); c.restore(); }
+  const bg=stageLayer();
+  if (bg) c.drawImage(bg, -RW*.04+dx-k*RW*.015, -RH*.04+dy, RW*1.08, RH*1.08); else { c.fillStyle='#07060a'; c.fillRect(0,0,RW,RH); }
   if (vis){
   if (B.solo){ c.fillStyle='rgba(255,40,20,.12)'; c.fillRect(0,0,RW,RH); }
   // спрайты (позиции, тряска, отлёт берутся прямо из DOM)
   const spr=img=>{ if(!img.complete||!img.naturalWidth) return; const r=M(img.getBoundingClientRect()); if(r.w<2) return;
     const sc=Math.min(r.w/img.naturalWidth,r.h/img.naturalHeight), w=img.naturalWidth*sc, h=img.naturalHeight*sc;
     c.drawImage(img, r.x+(r.w-w)/2, r.y+r.h-h, w, h); };
-  const oa=parseFloat(getComputedStyle($('oppW')).opacity); c.globalAlpha=isNaN(oa)?1:oa; spr($('oppImg')); c.globalAlpha=1;
+  const oa=B.over?parseFloat(getComputedStyle($('oppW')).opacity):1; c.globalAlpha=isNaN(oa)?1:oa; spr($('oppImg')); c.globalAlpha=1;
   spr($('heroImg'));
   // нотная дорожка и частицы — готовые канвасы игры
   [$('track'),$('fx')].forEach(cv=>{ if(cv.width){ const r=M(cv.getBoundingClientRect()); if(r.w) c.drawImage(cv,r.x,r.y,r.w,r.h); } });
@@ -1028,11 +1057,11 @@ function recFrame(){
     sayEl.textContent.split(' ').forEach(w=>{ const t=line?line+' '+w:w; if(c.measureText(t).width>r.w-pad*2 && line){ c.fillText(line,r.x+pad,y); y+=lh; line=w; } else line=t; });
     c.fillText(line,r.x+pad,y); }
   document.querySelectorAll('#arena .item').forEach(el=>{ const r=M(el.getBoundingClientRect()); c.textAlign='center'; c.textBaseline='middle'; c.font=`${Math.round(r.h*.55)}px sans-serif`;
-    c.shadowColor=el.classList.contains('bad')?'#ff3d6a':'#ffcf4a'; c.shadowBlur=24; c.fillText(el.textContent,r.x+r.w/2,r.y+r.h/2); c.shadowBlur=0; });
+    c.fillText(el.textContent,r.x+r.w/2,r.y+r.h/2); });
   document.querySelectorAll('#arena .pop, #arena .judge, #combo').forEach(el=>{ if(!el.textContent) return; const cs=getComputedStyle(el), o=parseFloat(cs.opacity); if(!(o>0)) return;
     const r=M(el.getBoundingClientRect()), x=r.x+r.w/2, y=r.y+r.h/2;
     c.globalAlpha=o; c.font=`${Math.round(parseFloat(cs.fontSize)*s)}px ${FONT}`; c.textAlign='center'; c.textBaseline='middle';
-    c.lineWidth=6; c.strokeStyle='#000'; c.strokeText(el.textContent,x,y); c.fillStyle=cs.color; c.shadowColor=cs.color; c.shadowBlur=18; c.fillText(el.textContent,x,y); c.shadowBlur=0; c.globalAlpha=1; });
+    c.lineWidth=6; c.strokeStyle='#000'; c.strokeText(el.textContent,x,y); c.fillStyle=cs.color; c.fillText(el.textContent,x,y); c.globalAlpha=1; });
   // HUD: имена, перетягивание, таймер
   const p=(B.pos+100)/200, bx=50, bw=RW-100, by=92, bh=34, hn=(B.h.short||B.h.name).toUpperCase(), on=B.o.name.toUpperCase();
   c.textBaseline='alphabetic'; c.lineWidth=5; c.strokeStyle='#000';
@@ -1043,7 +1072,7 @@ function recFrame(){
   g=c.createLinearGradient(0,by,0,by+bh); g.addColorStop(0,'#ff8d78'); g.addColorStop(.5,'#e5221a'); g.addColorStop(1,'#7d0f09'); c.fillStyle=g; c.fillRect(bx,by,bw,bh);
   g=c.createLinearGradient(0,by,0,by+bh); g.addColorStop(0,'#7ff3ff'); g.addColorStop(.5,'#14b9d6'); g.addColorStop(1,'#0a6f86'); c.fillStyle=g; c.fillRect(bx,by,bw*p,bh);
   c.fillStyle='rgba(255,255,255,.3)'; c.fillRect(bx,by,bw,bh/2); c.restore();
-  c.fillStyle='#fff'; c.shadowColor='#fff'; c.shadowBlur=16; rrect(c,bx+bw*p-9,by-10,18,bh+20,6); c.fill(); c.shadowBlur=0;
+  c.fillStyle='rgba(255,255,255,.35)'; rrect(c,bx+bw*p-14,by-15,28,bh+30,10); c.fill(); c.fillStyle='#fff'; rrect(c,bx+bw*p-9,by-10,18,bh+20,6); c.fill();
   const tt=B.survival?`ВОЛНА ${B.wave}`:String(Math.max(0,Math.ceil(B.t)));
   c.textAlign='center'; c.font=`68px ${FONT}`; c.lineWidth=8; c.strokeText(tt,RW/2,by+bh+82); c.fillStyle=!B.survival&&B.t<=10?'#ff3b2b':'#fff'; c.fillText(tt,RW/2,by+bh+82);
   // вспышка
@@ -1063,9 +1092,8 @@ function recFrame(){
     c.globalAlpha=1;
   }
   // нижняя плашка бренда
-  g=c.createLinearGradient(0,RH-BAND-60,0,RH); g.addColorStop(0,'rgba(7,6,10,0)'); g.addColorStop(.3,'rgba(7,6,10,.92)'); g.addColorStop(1,'#07060a'); c.fillStyle=g; c.fillRect(0,RH-BAND-60,RW,BAND+60);
-  if (MCLOGO.naturalWidth){ const h=74, w=MCLOGO.naturalWidth*h/MCLOGO.naturalHeight; c.drawImage(MCLOGO,(RW-w)/2,RH-BAND+18,w,h); }
-  c.textAlign='center'; c.textBaseline='alphabetic'; c.font=`32px ${FONT}`; c.fillStyle='#e0a084'; c.fillText('Биг Бау Вау · Music Core',RW/2,RH-30);
+  const band=bandLayer();
+  if (band) c.drawImage(band,0,RH-BAND-60,RW,BAND+60);
   // кружок с лицом
   const v=$('camVid');
   if (CAM.stream && v.videoWidth){
@@ -1075,7 +1103,7 @@ function recFrame(){
     c.save(); c.beginPath(); c.arc(cx,cy,R,0,Math.PI*2); c.closePath(); c.clip();
     c.translate(cx,cy); c.scale(-1,1); const side=Math.min(v.videoWidth,v.videoHeight);
     c.drawImage(v,(v.videoWidth-side)/2,(v.videoHeight-side)/2,side,side,-R,-R,R*2,R*2); c.restore();
-    c.lineWidth=8; c.strokeStyle='#22e5ff'; c.shadowColor='#22e5ff'; c.shadowBlur=24; c.beginPath(); c.arc(cx,cy,R,0,Math.PI*2); c.stroke(); c.shadowBlur=0;
+    c.beginPath(); c.arc(cx,cy,R,0,Math.PI*2); c.lineWidth=18; c.strokeStyle='rgba(34,229,255,.3)'; c.stroke(); c.lineWidth=8; c.strokeStyle='#22e5ff'; c.stroke();
   }
 }
 
@@ -1103,7 +1131,7 @@ function recHint(){
 async function recShare(){
   if (!CAM.blob) return;
   const file=new File([CAM.blob],recName(),{type:CAM.blob.type});
-  try{ await navigator.share({files:[file], text:'Отпугиваю соперников в «Биг Бау Вау» от Music Core 🤘 @big_bowwow_mc_bot'}); }
+  try{ await navigator.share({files:[file], text:`Отпугиваю соперников в «Биг Бау Вау» от Music Core 🤘 ${SHARE_LINK()}`}); }
   catch(e){
     if (e && e.name==='AbortError') return;
     try{ await navigator.share({files:[file]}); }catch(e2){ if(!e2 || e2.name!=='AbortError') recHint(); }
