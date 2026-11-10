@@ -1088,9 +1088,9 @@ function renderRec(){
     let canFile=false; try{ canFile=!!(navigator.share && navigator.canShare && navigator.canShare({files:[new File([CAM.blob],'v.'+recExt(),{type:CAM.blob.type})]})); }catch(e){}
     box.innerHTML=`<div class="recBox"><video src="${CAM.url}" controls playsinline preload="metadata"></video>
       <div class="acts"><b>🎬 Твой ролик готов</b>
-        ${canFile?'<button class="recB" onclick="recShare()">📤 Поделиться</button>':''}
+        ${canFile?'<button class="recB" onclick="recShare()">📤 Поделиться роликом</button>':''}
         <button class="recB ghost" onclick="recSave()">💾 Сохранить</button>
-        <small id="recHint">Видео только у тебя на устройстве. Выложи — это лучшая реклама игры 🤘</small></div></div>`;
+        <small id="recHint"></small></div></div>`;
   } else if (CAM.final){
     box.innerHTML='<div class="recBox wait"><b>🎬 Монтирую ролик…</b></div>';
   } else box.innerHTML='';
