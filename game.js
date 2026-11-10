@@ -440,7 +440,7 @@ function newBattle(o,i,survival){
   B={i,o,h:hero(),survival,mode:S.mode,wave:1,pos:0,t:survival?Infinity:30,elapsed:0,last:performance.now(),
      combo:0,maxCombo:0,fury:0,goatT:0,riffI:0,atkIn:o.atk.every,warnT:0,warnHits:0,hits:0,perfect:0,good:0,miss:0,fake:0,
      sayT:2.5,itemIn:5,amp:0,od:0,odAcc:0,roadAcc:0,broken:0,shield:0,mute:0,blind:0,glitch:0,disarm:0,drained:0,
-     solo:false,over:false,started:false,paused:false,k:o.k, notes:null, song:null};
+     solo:false,over:false,started:false,paused:false,k:o.k, notes:null, song:null, heat:0, hot:0, lastTap:0, preT:0};
   const used=[];
   if(S.boosts.warm){ S.boosts.warm--; B.pos=20; used.push('🔥'); }
   if(S.boosts.goat){ S.boosts.goat--; B.fury=100; used.push('🤘'); }
@@ -465,7 +465,9 @@ function enter(used){
   $('frame').classList.remove('solo'); $('arena').classList.remove('dark');
   $('hName').textContent=B.h.short||B.h.name; $('heroImg').src=B.h.img; faceStyle($('pHero'),B.h.img,B.h.face);
   setOpp(B.o);
-  document.querySelectorAll('.item,.cmt,.tut,.pause,.judge').forEach(e=>e.remove());
+  document.querySelectorAll('.item,.cmt,.tut,.pause,.judge,.tip').forEach(e=>e.remove());
+  if (!document.querySelector('.heatBar')){ const h=document.createElement('div'); h.className='heatBar'; h.innerHTML='<i></i><span>🌡️</span>'; $('arena').appendChild(h); }
+  $('warn').style.display='none'; $('warn').className='warn';
   $('micMeter').style.display='none'; $('shout').style.display='none'; $('beat').style.display='none';
   stopMusic(); go('battle'); draw();
   const begin=()=>countdown(()=>{
@@ -506,10 +508,27 @@ function countdown(cb){
   step();
 }
 /* ---- пауза ---- */
-function pause(){
-  if(!B||!B.started||B.over||B.paused) return;
+function freeze(){
   B.paused=true; B.pauseAt=AC.currentTime; stopMusic(); musicGain.gain.setValueAtTime(0,AC.currentTime);
   document.querySelectorAll('.item').forEach(e=>e.getAnimations().forEach(a=>a.pause()));
+}
+/* Стоп-кадр с подсказкой (один раз на каждую механику) */
+function tip(key, title, html, focus){
+  if (S.tut[key] || !B || B.over || B.paused) return false;
+  S.tut[key]=true; save(); freeze();
+  const d=document.createElement('div'); d.className='tip';
+  d.innerHTML=`<div class="tipCard"><h3>${title}</h3>${html}<button class="btn">Понял, дальше!</button></div>`;
+  if (focus){ const a=$('arena').getBoundingClientRect(), r=focus.getBoundingClientRect();
+    const ring=document.createElement('div'); ring.className='tipRing';
+    Object.assign(ring.style,{left:(r.left-a.left-8)+'px',top:(r.top-a.top-8)+'px',width:(r.width+16)+'px',height:(r.height+16)+'px'}); d.appendChild(ring); }
+  d.addEventListener('pointerdown',e=>e.stopPropagation());
+  d.querySelector('button').onclick=e=>{ e.stopPropagation(); d.remove(); resume(); };
+  $('arena').appendChild(d); haptic('heavy');
+  return true;
+}
+function pause(){
+  if(!B||!B.started||B.over||B.paused) return;
+  freeze();
   const d=document.createElement('div'); d.className='pause';
   d.innerHTML=`<h3>ПАУЗА</h3>
     <button class="btn" data-a="resume">Продолжить</button>
@@ -570,7 +589,9 @@ function tapRhythm(){
   for(const n of B.notes){ if(n.hit||n.missed) continue; const d=Math.abs(n.t-now); if(d<bd){bd=d;best=n;} if(n.t-now>wg) break; }
   if (B.warnT>0) { B.warnHits++; $('warnBar').style.width=Math.min(100,B.warnHits/8*100)+'%'; }
   if (!best || bd>wg){            // тап в пустоту — фальшь
-    B.fake++; breakCombo(); B.pos-=S0/12; sfx('miss'); judge('ФАЛЬШЬ','#ff6b8a'); haptic('light'); return;
+    B.fake++; breakCombo(); B.pos-=S0/12; sfx('miss'); judge('ФАЛЬШЬ','#ff6b8a'); haptic('light');
+    if (B.warnT<=0){ B.heat+=2.2; if (B.heat>=HEAT_MAX) overheat(); }
+    return;
   }
   best.hit=true; B.hits++;
   const grade = bd<=wp ? 'perfect':'good';
@@ -592,11 +613,26 @@ function tapClick(kind='tap', scale=1){
   strike(p, crit?'perfect':'good', B.h.riff[B.riffI++%B.h.riff.length]);
   if (kind!=='auto') haptic('light');
 }
+/* Защита от мультитапа: тапы чаще 1 в 45 мс отбрасываются (несколько пальцев разом),
+   а «долбёжка» греет усилок. Перегрелся — 2 секунды тишины. Во время отражения атаки нагрева нет. */
+const HEAT_MAX = 11;
 function onTap(){
   if(!B||!B.started||B.over||B.paused) return;
+  const now=performance.now();
+  if (now-B.lastTap<45) return;
+  B.lastTap=now;
+  if (B.hot>0){ judge('🔥 ПЕРЕГРЕВ','#ff8a1c'); return; }
   if (B.disarm>0){ pop('🚫 ГИТАРУ ОТОБРАЛИ','#ff3d6a'); return; }
+  if (B.mode==='click' && B.warnT<=0){ B.heat+=1; if (B.heat>=HEAT_MAX) return overheat(); }
   if (B.mode==='rhythm') tapRhythm();
   else if (B.mode==='click') tapClick('tap');
+}
+function overheat(){
+  B.heat=0; B.hot=2; B.combo=0; sfx('bad'); haptic('heavy'); shake(8);
+  pop('🔥 ПЕРЕГРЕВ УСИЛКА!','#ff8a1c',true);
+  tip('heat','🔥 Перегрев усилка',`<p>Ты долбишь по экрану слишком часто (или несколькими пальцами). Усилок перегрелся и <em>2 секунды не играет</em>.</p>
+    <p>Шкала 🌡️ слева показывает нагрев. ${B.mode==='rhythm'?'Бей <em>только по нотам</em> — тапы мимо нот греют усилок.':'Тапай <em>ровно и быстро</em>, но не «пулемётом». Сильнее бьют прокачка и роуди, а не пальцы.'}</p>
+    <p>Во время отражения атаки перегрева нет — там долби сколько хочешь.</p>`, document.querySelector('.heatBar'));
 }
 function goat(){
   if(!B||!B.started||B.over||B.paused||B.fury<100||B.goatT>0) return;
@@ -627,11 +663,23 @@ function spawnItem(){
   const tot=ITEMS.reduce((a,x)=>a+x.w,0); let r=Math.random()*tot, it=ITEMS[0];
   for(const x of ITEMS){ if((r-=x.w)<0){ it=x; break; } }
   const a=$('arena').getBoundingClientRect(), el=document.createElement('div'); el.className='item'+(it.bad?' bad':''); el.textContent=it.em;
-  el.style.left='100%'; el.style.top=(a.height*(.26+Math.random()*.22))+'px';
+  const W=a.width, H=a.height, sz=W*.17, mode=['flyL','flyR','pop','pop','drop'][Math.random()*5|0];
+  const rx=()=>W*(.06+Math.random()*.72), ry=()=>H*(.24+Math.random()*.38);
+  let an;
   $('arena').appendChild(el);
-  const amp=20+Math.random()*30;
-  const an=el.animate([0,.25,.5,.75,1].map(k=>({transform:`translate(${-k*(a.width+90)}px,${Math.sin(k*Math.PI*3)*amp}px) rotate(${-k*200}deg)`})),{duration:3300,easing:'linear'});
+  if (mode==='pop'){            // возникает в случайной точке и быстро исчезает
+    el.style.left=rx()+'px'; el.style.top=ry()+'px';
+    an=el.animate([{transform:'scale(0)',opacity:0},{transform:'scale(1.2)',opacity:1,offset:.08},{transform:'scale(1)',opacity:1,offset:.15},{transform:'scale(1)',opacity:1,offset:.8},{transform:'scale(.9)',opacity:.3,offset:.9},{transform:'scale(1)',opacity:1,offset:.95},{transform:'scale(0)',opacity:0}],{duration:2300,easing:'ease-out'});
+  } else if (mode==='drop'){    // падает сверху
+    el.style.left=rx()+'px'; el.style.top=(-sz)+'px';
+    an=el.animate([{transform:'translateY(0) rotate(0)'},{transform:`translateY(${H*.85}px) rotate(${(Math.random()-.5)*400}deg)`}],{duration:2800,easing:'cubic-bezier(.4,.1,.7,1)'});
+  } else {                      // пролетает слева или справа
+    const fromL=mode==='flyL', y=ry(), amp=20+Math.random()*30;
+    el.style.left=(fromL?-sz:W)+'px'; el.style.top=y+'px';
+    an=el.animate([0,.25,.5,.75,1].map(k=>({transform:`translate(${(fromL?1:-1)*k*(W+sz)}px,${Math.sin(k*Math.PI*3)*amp}px) rotate(${(fromL?1:-1)*k*200}deg)`})),{duration:3000,easing:'linear'});
+  }
   an.onfinish=()=>el.remove();
+  if (!it.bad) setTimeout(()=>{ if(el.isConnected) tip('item','🎁 Усилители',`<p>По сцене появляются значки — <em>тапни по ним</em>, чтобы забрать: 🔊 усилок ×2, ⚡ овердрайв, 🎆 пиротехника, 🎸 медиатор, 🛡️ охрана.</p><p>Они возникают <em>в разных местах</em> и быстро исчезают. Красные (💔) — ловушки, их <em>не трогай</em>.</p>`, el); },350);
   el.addEventListener('pointerdown',e=>{ e.stopPropagation(); if(!B||B.over||B.paused) return;
     const rr=el.getBoundingClientRect();
     fx.burst(rr.left-a.left+rr.width/2, rr.top-a.top+rr.height/2, 24, it.bad?['#ff3d6a','#fff']:['#ffcf4a','#4cf08f','#fff'],6);
@@ -688,10 +736,18 @@ function loop(now){
     if (tnow>B.songEnd-.3) loadSong(B.o, tnow+LEAD);   // песня закончилась — играем заново
   }
   if (B.mode!=='rhythm' && lvl('roadie')>0){ B.roadAcc+=dt*lvl('roadie'); while(B.roadAcc>=1){ B.roadAcc--; tapClick('auto'); } }
-  if (B.warnT>0){
+  if (B.preT>0){                       // соперник заряжает атаку
+    B.preT-=dt;
+    $('warnBar').style.width=Math.min(100,(1-B.preT/B.preMax)*100)+'%';
+    if (B.preT<=0){
+      B.warnT=1.3; B.warnHits=0; const need=B.mode==='rhythm'?8:10;
+      $('warn').className='warn hit'; $('warnT').textContent=`🛡️ ОТБИВАЙ! ТАПАЙ ×${need}`; $('warnBar').style.width='0%';
+      sfx(B.o.sfx); haptic('heavy');
+    }
+  } else if (B.warnT>0){
     B.warnT-=dt;
     if (B.warnT<=0){
-      $('warn').style.display='none'; $('oppW').classList.remove('windup');
+      $('warn').style.display='none'; $('warn').className='warn'; $('oppW').classList.remove('windup');
       const needHits = B.mode==='rhythm'?8:10;
       if (B.warnHits>=needHits){ pop('ОТБИЛ!','#4cf08f',true); B.pos+=4; B.fury=Math.min(100,B.fury+6); sfx('cheer'); const o=oppCenter(); fx.burst(o.x,o.y,30,['#4cf08f','#fff'],8,'spark'); }
       else if (B.shield){ B.shield=0; pop('🛡️ ОХРАНА ПРИКРЫЛА','#4cf08f',true); }
@@ -699,13 +755,19 @@ function loop(now){
       B.atkIn=B.o.atk.every*(.8+Math.random()*.4);
     }
   } else if ((B.atkIn-=dt)<=0){
-    B.warnT=1.2; B.warnHits=0; $('warnT').textContent=B.o.atk.name+' ЖМИ!'; $('warnBar').style.width='0%'; $('warn').style.display='block';
-    $('oppW').classList.add('windup'); sfx(B.o.sfx);
+    B.preMax=B.preT=B.o.act>=3?1.1:1.6;
+    $('warn').className='warn pre'; $('warn').style.display='block';
+    $('warnT').textContent=`⚡ ${B.o.name.toUpperCase()} ГОТОВИТСЯ: ${B.o.atk.name}`; $('warnBar').style.width='0%';
+    $('oppW').classList.add('windup'); sfx('tick');
+    tip('atk','⚡ Соперник готовится к атаке',`<p>Видишь жёлтую плашку и заряжающуюся шкалу? Через секунду будет <em>атака</em>.</p>
+      <p>Когда плашка станет <em>красной «ОТБИВАЙ!»</em> — тапай по экрану <em>очень быстро</em>: ${B.mode==='rhythm'?'8':'10'} ударов, пока не закончилась шкала. Можно хоть всеми пальцами.</p>
+      <p>Отбил — соперник отлетает, а логотип Music Core заряжается. Не отбил — он толкает тебя и делает пакость (у каждого своя).</p>`, $('oppW'));
   }
   if ((B.sayT-=dt)<=0){ say(B.o.lines[Math.random()*B.o.lines.length|0]); B.sayT=4+Math.random()*3; }
   if ((B.itemIn-=dt)<=0){ spawnItem(); B.itemIn=7+Math.random()*5; }
   if (B.od>0){ B.od-=dt; B.odAcc+=dt*8; while(B.odAcc>=1){ B.odAcc--; strike(.6*powerMult(),'good',B.h.riff[B.riffI++%8]); } }
-  ['goatT','amp','broken','mute','blind','glitch','disarm'].forEach(k=>{ if(B[k]>0) B[k]-=dt; });
+  ['goatT','amp','broken','mute','blind','glitch','disarm','hot'].forEach(k=>{ if(B[k]>0) B[k]-=dt; });
+  B.heat=Math.max(0,B.heat-dt*(B.mode==='rhythm'?3:7));
   if (!B.survival && !B.solo && B.t<=10){ B.solo=true; M.intense=true; $('frame').classList.add('solo'); pop('🎸 ФИНАЛ: ДАВИТ СИЛЬНЕЕ','#ff3b2b',true); sfx('cheer'); }
   B.pos=Math.max(-100,Math.min(100,B.pos));
   draw();
@@ -732,6 +794,7 @@ function draw(){
   $('mcPct').textContent = B.goatT>0 ? 'ЖАРИТ!' : B.fury>=100 ? 'ЖМИ!' : Math.floor(B.fury)+'%';
   $('combo').textContent=B.mode==='rhythm'&&B.combo>1?`КОМБО ${B.combo}${comboMult(B.combo)>1?'  ·  ×'+comboMult(B.combo):''}`:'';
   $('arena').classList.toggle('dark',B.blind>0);
+  const hb=document.querySelector('.heatBar'); if(hb){ hb.querySelector('i').style.height=(B.hot>0?100:B.heat/HEAT_MAX*100)+'%'; hb.classList.toggle('hot',B.hot>0||B.heat>HEAT_MAX*.7); hb.style.opacity=(B.mode==='click'||B.heat>0||B.hot>0)?1:.25; }
   const k=B.pos/100, ow=$('oppW');
   if(!ow.classList.contains('lunge')) ow.style.transform=`translateX(${k*14}%) translateY(${-k*6}%) scale(${1-k*.18})`;
   ow.classList.toggle('scared',k>.55);

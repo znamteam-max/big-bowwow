@@ -96,3 +96,19 @@ canvas.track{position:absolute;left:0;right:0;bottom:2%;height:15%;width:100%;z-
 .mcSuper.ready .mcPct{color:#fff}
 .mcSuper.active .mcOn{animation:mcBurn .25s linear infinite}
 @keyframes mcBurn{50%{filter:brightness(2) saturate(2) drop-shadow(0 0 5cqw #ff3b2b)}}
+
+/* ---- v6: атака с подготовкой, стоп-кадры, перегрев ---- */
+.warn.pre b{background:linear-gradient(90deg,transparent,rgba(255,170,30,.92) 15%,rgba(255,170,30,.92) 85%,transparent);color:#1a0d00;text-shadow:none;animation:none;font-size:5cqw}
+.warn.pre i u{background:#ffcf4a}
+.warn.hit b{font-size:6.4cqw}
+.warn i{height:2.6cqw}
+.heatBar{position:absolute;left:3cqw;bottom:20%;width:3.6cqw;height:22%;border-radius:2cqw;background:rgba(0,0,0,.6);box-shadow:inset 0 0 0 1px rgba(255,255,255,.15);z-index:15;transition:opacity .3s}
+.heatBar i{position:absolute;left:0;right:0;bottom:0;height:0;border-radius:2cqw;background:linear-gradient(0deg,#ffcf4a,#ff8a1c,#ff3b2b);transition:height .1s}
+.heatBar span{position:absolute;left:50%;top:-5.4cqw;transform:translateX(-50%);font-size:3.6cqw}
+.heatBar.hot{box-shadow:0 0 3cqw #ff3b2b,inset 0 0 0 1px #ff8a1c;animation:blink .2s infinite alternate}
+.tip{position:absolute;inset:0;z-index:50;background:rgba(5,4,8,.55);display:flex;align-items:flex-end;padding:5cqw}
+.tipCard{position:relative;z-index:2;width:100%;background:linear-gradient(180deg,#2a2132,#17121c);border:1px solid rgba(255,207,74,.5);border-radius:4cqw;padding:5cqw;box-shadow:0 2cqw 8cqw rgba(0,0,0,.7);animation:slideUp .35s cubic-bezier(.2,1.4,.4,1)}
+.tipCard h3{font-family:var(--display);font-weight:400;font-size:6cqw;margin:0 0 3cqw;color:var(--gold)}
+.tipCard p{margin:0 0 2.6cqw;font-size:3.9cqw;line-height:1.38}
+.tipCard em{color:var(--gold);font-style:normal}
+.tipRing{position:absolute;z-index:1;border:1cqw solid var(--gold);border-radius:4cqw;box-shadow:0 0 6cqw var(--gold);animation:blink .5s infinite alternate;pointer-events:none}
