@@ -159,3 +159,12 @@ canvas.track{position:absolute;left:0;right:0;bottom:2%;height:15%;width:100%;z-
 
 /* v14: полный логотип MC светится по контуру, без квадратной рамки */
 .mcSuper.ready .mcOn,.mcSuper.active .mcOn{clip-path:none}
+
+/* v15: режим «Ноты» — лесенка нот слева */
+.mic.pm{width:15cqw}
+.mic.pm .vz{border-radius:3cqw}
+.pmL{position:absolute;left:0;right:0;text-align:center;font-family:var(--display);font-size:2.5cqw;line-height:1;color:rgba(255,255,255,.5);transform:translateY(50%);z-index:2}
+.pmL.t{color:#fff;font-size:3cqw}
+.pmDot{position:absolute;left:50%;width:4.4cqw;height:4.4cqw;margin-left:-2.2cqw;border-radius:50%;background:#fff;box-shadow:0 0 2cqw #fff;border:.5cqw solid #000;transform:translateY(50%);display:none;z-index:3}
+.mic.pm.in .pmDot{background:var(--good);box-shadow:0 0 3cqw var(--good)}
+.modeSeg button{font-size:3.2cqw;padding:2.6cqw .6cqw}
