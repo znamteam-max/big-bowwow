@@ -285,7 +285,8 @@ function stopMusic(){ M.on=false; }
 function scheduler(){
   if(!M.on||!AC) return;
   const st=60/M.bpm/4;
-  while(M.next < AC.currentTime+.12){ (M.kind==='song'?songStep:loopStep)(M.step, M.next); M.next+=st; M.step++; }
+  if (M.next < AC.currentTime-.05){ const n=Math.ceil((AC.currentTime-M.next)/st); M.next+=n*st; M.step+=n; }   // поток подвис — догоняем без пачки нот
+  while(M.next < AC.currentTime+.3){ (M.kind==='song'?songStep:loopStep)(M.step, M.next); M.next+=st; M.step++; }
 }
 function drums(p,t,groove,kickOn,I){
   if (kickOn) osc('sine',130,42,t,.14,.55,musicGain);
@@ -428,7 +429,7 @@ async function micStart(){
   if (mic) return true;
   try{
     const shared = !!(CAM.stream && CAM.stream.getAudioTracks().some(t=>t.readyState==='live'));   // iOS глушит второй захват микрофона — берём из камеры
-    const st= shared ? new MediaStream(CAM.stream.getAudioTracks()) : await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:false,autoGainControl:false}});
+    const st= shared ? new MediaStream(CAM.stream.getAudioTracks()) : await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
     const src=AC.createMediaStreamSource(st), an=AC.createAnalyser(); an.fftSize=2048; an.smoothingTimeConstant=.3; src.connect(an);
     mic={st,an,shared,buf:new Float32Array(an.fftSize),fb:new Float32Array(an.frequencyBinCount),floor:-60,top:S.micTop||MIC_TOP0,sdb:-90,hi:-90,lv:0,wind:0,hint:''};
     return true;
@@ -1015,7 +1016,7 @@ function camAcquire(){
   if (!recOK()){ S.cam=false; save(); syncCamUI(); note('Запись видео тут не поддерживается. Играем без камеры.'); return Promise.resolve(false); }
   const vid={facingMode:'user',width:{ideal:360},height:{ideal:360},frameRate:{ideal:24,max:30}};
   const withMic = !(mic && mic.st && mic.st.active && !mic.shared);   // микрофон уже взят режимом «Крик» — второй раз не просим
-  const ask = a => navigator.mediaDevices.getUserMedia({video:vid, audio:a?{echoCancellation:true,noiseSuppression:false,autoGainControl:false}:false});
+  const ask = a => navigator.mediaDevices.getUserMedia({video:vid, audio:a?{echoCancellation:false,noiseSuppression:false,autoGainControl:false}:false});
   CAM.pending = ask(withMic).catch(e=> withMic && e && e.name!=='NotAllowedError' ? ask(false) : Promise.reject(e))
     .then(st=>{
       CAM.pending=null;
@@ -1063,7 +1064,7 @@ function recStart(){
   if (CAM.micSrc){ try{ CAM.micSrc.disconnect(); }catch(e){} CAM.micSrc=null; }
   let at=CAM.stream.getAudioTracks().filter(t=>t.readyState==='live');
   if (!at.length && mic && mic.st) at=mic.st.getAudioTracks().filter(t=>t.readyState==='live');
-  if (at.length){ CAM.micSrc=AC.createMediaStreamSource(new MediaStream(at)); const g=AC.createGain(); g.gain.value=1.3; CAM.micSrc.connect(g).connect(CAM.dest); }
+  if (at.length){ CAM.micSrc=AC.createMediaStreamSource(new MediaStream(at)); const g=AC.createGain(); g.gain.value=2.6; const cp=AC.createDynamicsCompressor(); cp.threshold.value=-30; cp.ratio.value=4; cp.attack.value=.005; cp.release.value=.2; CAM.micSrc.connect(g).connect(cp).connect(CAM.dest); }   // AGC выключен — голос тихий, выравниваем
   recFrame();
   const vs=CAM.cv.captureStream(30);
   const ms=new MediaStream([...vs.getVideoTracks(), ...CAM.dest.stream.getAudioTracks()]);
@@ -1141,7 +1142,9 @@ function mcLayers(){
   const glow=mk(c=>{ c.shadowColor='rgba(255,70,40,.9)'; c.shadowBlur=30*RS; c.drawImage(MCLOGO,P,P,w,h); c.shadowColor='#e0a084'; c.shadowBlur=12*RS; c.drawImage(MCLOGO,P,P,w,h); c.shadowBlur=0; c.drawImage(on,0,0,w+P*2,h+P*2); });
   return CAM.mcL={on,off,glow,w,h,P};
 }
-function fitText(c,txt,max,size,font){ let s=size; do{ c.font=`${s}px ${font}`; s-=2; }while(c.measureText(txt).width>max && s>12); }
+const FIT=new Map();
+function fitText(c,txt,max,size,font){ const k=txt+"|"+Math.round(max)+"|"+size+"|"+font; let s=FIT.get(k); if(s){ c.font=s; return; }
+  let z=size; do{ c.font=`${z}px ${font}`; z-=2; }while(c.measureText(txt).width>max && z>12); if(FIT.size>300) FIT.clear(); FIT.set(k,c.font); }
 const FONT='"Russo One","Arial Black",sans-serif', BODYF='"Oswald","Arial Narrow",Arial,sans-serif';
 function recFrame(){
   const c=CAM.ctx; if(!c || !B) return;
@@ -1226,7 +1229,7 @@ function recFrame(){
   document.querySelectorAll('#arena .cmt').forEach(el=>{ const r=M(el.getBoundingClientRect()); if(!r.w) return;
     c.fillStyle='#fff'; rrect(c,r.x,r.y,r.w,r.h,Math.round(3*u)); c.fill(); c.fillStyle='#111'; c.textAlign='left'; c.textBaseline='middle';
     const t=(el.firstChild&&el.firstChild.textContent||el.textContent).trim(); fitText(c,t,r.w-6*u,Math.round(3.6*u),BODYF); c.fillText(t,r.x+3*u,r.y+r.h/2); });
-  document.querySelectorAll('#arena .pop, #arena .judge, #combo, #shout').forEach(el=>{ if(!el.textContent) return; const cs=getComputedStyle(el), o=parseFloat(cs.opacity); if(!(o>0) || cs.display==='none') return;
+  document.querySelectorAll('#arena .pop, #arena .judge, #combo, #shout').forEach(el=>{ if(!el.textContent || el.style.display==='none' || (el.id==='shout' && el.style.display!=='block')) return; const cs=getComputedStyle(el), o=parseFloat(cs.opacity); if(!(o>0) || cs.display==='none') return;
     const r=M(el.getBoundingClientRect()), x=r.x+r.w/2, y=r.y+r.h/2;
     c.globalAlpha=o; c.font=`${Math.round(parseFloat(cs.fontSize)*s)}px ${FONT}`; c.textAlign='center'; c.textBaseline='middle';
     c.lineWidth=6; c.strokeStyle='#000'; c.strokeText(el.textContent,x,y); c.fillStyle=cs.color; c.fillText(el.textContent,x,y); c.globalAlpha=1; });
