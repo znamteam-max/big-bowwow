@@ -156,3 +156,6 @@ canvas.track{position:absolute;left:0;right:0;bottom:2%;height:15%;width:100%;z-
 .shout{font-size:7.5cqw;color:#fff;text-shadow:0 0 3cqw rgba(255,255,255,.5),0 .6cqw 0 #000;animation:none}
 .shout.in{color:var(--good);text-shadow:0 0 4cqw var(--good),0 .6cqw 0 #000;animation:blink .35s infinite alternate}
 .shout.hi{color:#ffcf4a;text-shadow:0 0 3cqw #ff8a1c,0 .6cqw 0 #000}
+
+/* v14: полный логотип MC светится по контуру, без квадратной рамки */
+.mcSuper.ready .mcOn,.mcSuper.active .mcOn{clip-path:none}

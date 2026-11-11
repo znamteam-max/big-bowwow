@@ -86,7 +86,7 @@ const MODES = {
   voice: {name:'🎤 Крик',   hint:'Держи громкость голоса в зелёной зоне. Зона ходит: то ори во всю глотку, то тише. Чем выше зона — тем сильнее удар. Дуть в микрофон не прокатит. Тапы отключены.'},
 };
 /* Ссылка для «Поделиться»: пост Music Core с историей и игрой. Пока пусто — делимся ботом. */
-const POST_URL = '';
+const POST_URL = 'https://t.me/themusiccore/2321';
 const SHARE_LINK = () => POST_URL || 'https://t.me/big_bowwow_mc_bot';
 const HATE = ['Кринж 🤡','Раньше было лучше','Продались','Это автотюн?','Отписка','Мой кот играет лучше','Где новый альбом?','Скучно 💤'];
 [...OPPS.map(o=>o.img),'img/hero.webp','img/stage.webp','img/mc-logo.png'].forEach(s=>{const i=new Image(); i.src=s});
@@ -845,7 +845,7 @@ function draw(){
   const p=(B.pos+100)/2;
   $('tugMe').style.width=p+'%'; $('tugThem').style.width=(100-p)+'%'; $('knot').style.left=p+'%';
   const tm=$('timer'); tm.textContent=B.survival?`ВОЛНА ${B.wave}`:Math.max(0,Math.ceil(B.t)); tm.classList.toggle('hot',!B.survival&&B.t<=10);
-  const gb=$('goat'); $('fury').style.clipPath=`inset(${100-(B.goatT>0?100:B.fury)}% 0 0 0)`;
+  const gb=$('goat'); const fv=B.goatT>0?100:B.fury; $('fury').style.clipPath = fv>=100 ? 'none' : `inset(${100-fv}% 0 0 0)`;
   gb.classList.toggle('ready',B.fury>=100&&B.goatT<=0); gb.classList.toggle('active',B.goatT>0);
   $('mcPct').textContent = B.goatT>0 ? 'ЖАРИТ!' : B.fury>=100 ? 'ЖМИ!' : Math.floor(B.fury)+'%';
   $('combo').textContent=(B.mode==='rhythm'||B.mode==='voice')&&B.combo>1?`КОМБО ${B.combo}${comboMult(B.combo)>1?'  ·  ×'+comboMult(B.combo):''}`:'';
@@ -1060,9 +1060,20 @@ function bandLayer(){
   if (!MCLOGO.naturalWidth || !(document.fonts && document.fonts.check('32px "Russo One"'))) return null;
   return CAM.bandL=layer(RW,BAND+60,c=>{
     const g=c.createLinearGradient(0,0,0,BAND+60); g.addColorStop(0,'rgba(7,6,10,0)'); g.addColorStop(.3,'rgba(7,6,10,.92)'); g.addColorStop(1,'#07060a'); c.fillStyle=g; c.fillRect(0,0,RW,BAND+60);
-    const h=74, w=MCLOGO.naturalWidth*h/MCLOGO.naturalHeight; c.drawImage(MCLOGO,(RW-w)/2,78,w,h);
     c.textAlign='center'; c.font=`32px ${FONT}`; c.fillStyle='#e0a084'; c.fillText('Биг Бау Вау · Music Core',RW/2,BAND+30);
   });
+}
+/* логотип MC для ролика: серый, цветной и светящийся варианты рисуются один раз */
+function mcLayers(){
+  if (CAM.mcL) return CAM.mcL;
+  if (!MCLOGO.naturalWidth) return null;
+  const h=100, w=Math.round(MCLOGO.naturalWidth*h/MCLOGO.naturalHeight), P=36, mk=fn=>layer(w+P*2,h+P*2,fn);
+  const on=mk(c=>c.drawImage(MCLOGO,P,P,w,h)), off=mk(c=>c.drawImage(MCLOGO,P,P,w,h));
+  try{ const x=on.getContext('2d'), d=x.getImageData(0,0,on.width,on.height), a=d.data; for(let i=0;i<a.length;i+=4){ a[i]=Math.min(255,a[i]*1.3); a[i+1]=Math.min(255,a[i+1]*1.25); a[i+2]=Math.min(255,a[i+2]*1.2); } x.putImageData(d,0,0); }catch(e){}
+  try{ const x=off.getContext('2d'), d=x.getImageData(0,0,off.width,off.height), a=d.data;
+    for(let i=0;i<a.length;i+=4){ const l=(a[i]*.3+a[i+1]*.59+a[i+2]*.11)*.38; a[i]=a[i+1]=a[i+2]=l; a[i+3]*=.8; } x.putImageData(d,0,0); }catch(e){}
+  const glow=mk(c=>{ c.shadowColor='rgba(255,70,40,.9)'; c.shadowBlur=30*RS; c.drawImage(MCLOGO,P,P,w,h); c.shadowColor='#e0a084'; c.shadowBlur=12*RS; c.drawImage(MCLOGO,P,P,w,h); c.shadowBlur=0; c.drawImage(on,0,0,w+P*2,h+P*2); });
+  return CAM.mcL={on,off,glow,w,h,P};
 }
 function fitText(c,txt,max,size,font){ let s=size; do{ c.font=`${s}px ${font}`; s-=2; }while(c.measureText(txt).width>max && s>12); }
 const FONT='"Russo One","Arial Black",sans-serif', BODYF='"Oswald","Arial Narrow",Arial,sans-serif';
@@ -1104,7 +1115,40 @@ function recFrame(){
     c.fillText(line,r.x+pad,y); }
   document.querySelectorAll('#arena .item').forEach(el=>{ const r=M(el.getBoundingClientRect()); c.textAlign='center'; c.textBaseline='middle'; c.font=`${Math.round(r.h*.55)}px sans-serif`;
     c.fillText(el.textContent,r.x+r.w/2,r.y+r.h/2); });
-  document.querySelectorAll('#arena .pop, #arena .judge, #combo').forEach(el=>{ if(!el.textContent) return; const cs=getComputedStyle(el), o=parseFloat(cs.opacity); if(!(o>0)) return;
+  // шкала громкости «Крик»
+  const mm=$('micMeter');
+  if (mm.style.display==='block'){
+    const vr=M(mm.querySelector('.vz').getBoundingClientRect()), inz=mm.classList.contains('in'), rad=vr.w/2;
+    c.fillStyle='rgba(0,0,0,.7)'; rrect(c,vr.x,vr.y,vr.w,vr.h,rad); c.fill(); c.lineWidth=2; c.strokeStyle='rgba(255,255,255,.25)'; c.stroke();
+    c.save(); rrect(c,vr.x,vr.y,vr.w,vr.h,rad); c.clip();
+    const zr=M($('vzZone').getBoundingClientRect());
+    c.fillStyle=inz?'rgba(76,240,143,.75)':'rgba(76,240,143,.3)'; rrect(c,zr.x,zr.y,zr.w,zr.h,Math.min(12,zr.h/2)); c.fill();
+    c.lineWidth=5; c.strokeStyle=inz?'#fff':'#4cf08f'; c.stroke();
+    const lr=M($('vzLvl').getBoundingClientRect());
+    if (lr.h>0){ g=c.createLinearGradient(0,lr.y+lr.h,0,lr.y); g.addColorStop(0,'rgba(34,229,255,.4)'); g.addColorStop(1,'#fff'); c.fillStyle=g; c.fillRect(lr.x,lr.y,lr.w,lr.h); }
+    const nr=M($('vzNeedle').getBoundingClientRect()); c.fillStyle=mm.classList.contains('wind')?'#ff6b8a':'#fff'; c.fillRect(nr.x,nr.y,nr.w,Math.max(5,nr.h));
+    c.restore();
+    const tr=M(mm.querySelector('.vzT').getBoundingClientRect()); c.textAlign='center'; c.textBaseline='middle'; c.font=Math.round(tr.h*.9)+'px '+FONT;
+    c.lineWidth=4; c.strokeStyle='#000'; c.strokeText('ОРИ',tr.x+tr.w/2,tr.y+tr.h/2); c.fillStyle='#4cf08f'; c.fillText('ОРИ',tr.x+tr.w/2,tr.y+tr.h/2);
+  }
+  // перегрев (кликер)
+  const hb=document.querySelector('#arena .heatBar'), hbo=hb?parseFloat(hb.style.opacity||'1'):0;
+  if (hb && hbo>0){ const r=M(hb.getBoundingClientRect()), ih=r.h*(parseFloat(hb.querySelector('i').style.height)||0)/100;
+    c.globalAlpha=hbo; c.fillStyle='rgba(0,0,0,.6)'; rrect(c,r.x,r.y,r.w,r.h,r.w/2); c.fill();
+    if (ih>0){ g=c.createLinearGradient(0,r.y+r.h,0,r.y+r.h-ih); g.addColorStop(0,'#ffcf4a'); g.addColorStop(1,'#ff3b2b'); c.fillStyle=g; rrect(c,r.x,r.y+r.h-ih,r.w,ih,r.w/2); c.fill(); }
+    c.globalAlpha=1; }
+  // полоса отбития атаки
+  if (warn.style.display==='block'){ const wi=warn.querySelector('i'), r=M(wi.getBoundingClientRect()), f=(parseFloat($('warnBar').style.width)||0)/100;
+    if (r.w){ c.fillStyle='rgba(0,0,0,.65)'; rrect(c,r.x,r.y,r.w,r.h,r.h/2); c.fill(); if(f>0){ c.fillStyle='#4cf08f'; rrect(c,r.x,r.y,r.w*Math.min(1,f),r.h,r.h/2); c.fill(); } } }
+  // бусты и пакости
+  document.querySelectorAll('#buffs span').forEach(el=>{ const r=M(el.getBoundingClientRect()); if(!r.w) return; const bad=el.classList.contains('debuff');
+    c.fillStyle='rgba(10,8,16,.72)'; rrect(c,r.x,r.y,r.w,r.h,r.h/2); c.fill(); c.lineWidth=2; c.strokeStyle=bad?'rgba(255,61,106,.7)':'rgba(255,255,255,.25)'; c.stroke();
+    c.fillStyle=bad?'#ffb3c2':'#fff'; c.textAlign='center'; c.textBaseline='middle'; fitText(c,el.textContent,r.w-8,Math.round(r.h*.55),FONT); c.fillText(el.textContent,r.x+r.w/2,r.y+r.h/2); });
+  // комментарии зрителей
+  document.querySelectorAll('#arena .cmt').forEach(el=>{ const r=M(el.getBoundingClientRect()); if(!r.w) return;
+    c.fillStyle='#fff'; rrect(c,r.x,r.y,r.w,r.h,Math.round(3*u)); c.fill(); c.fillStyle='#111'; c.textAlign='left'; c.textBaseline='middle';
+    const t=(el.firstChild&&el.firstChild.textContent||el.textContent).trim(); fitText(c,t,r.w-6*u,Math.round(3.6*u),BODYF); c.fillText(t,r.x+3*u,r.y+r.h/2); });
+  document.querySelectorAll('#arena .pop, #arena .judge, #combo, #shout').forEach(el=>{ if(!el.textContent) return; const cs=getComputedStyle(el), o=parseFloat(cs.opacity); if(!(o>0) || cs.display==='none') return;
     const r=M(el.getBoundingClientRect()), x=r.x+r.w/2, y=r.y+r.h/2;
     c.globalAlpha=o; c.font=`${Math.round(parseFloat(cs.fontSize)*s)}px ${FONT}`; c.textAlign='center'; c.textBaseline='middle';
     c.lineWidth=6; c.strokeStyle='#000'; c.strokeText(el.textContent,x,y); c.fillStyle=cs.color; c.fillText(el.textContent,x,y); c.globalAlpha=1; });
@@ -1140,6 +1184,16 @@ function recFrame(){
   // нижняя плашка бренда
   const band=bandLayer();
   if (band) c.drawImage(band,0,RH-BAND-60,RW,BAND+60);
+  const L=band&&mcLayers();
+  if (L){
+    const W=L.w+L.P*2, H=L.h+L.P*2, x0=(RW-W)/2, y0=RH-BAND-60+64-L.P;
+    const f=B.goatT>0?100:Math.max(0,Math.min(100,B.fury)), ready=f>=100;
+    if (ready){ c.globalAlpha=.55+.45*Math.sin(performance.now()/(B.goatT>0?60:110)); c.drawImage(L.glow,x0,y0,W,H); c.globalAlpha=1; c.drawImage(L.on,x0,y0,W,H); }
+    else { c.drawImage(L.off,x0,y0,W,H); const fy=L.P+L.h*(1-f/100); if (f>0) c.drawImage(L.on,0,fy*RS,L.on.width,(H-fy)*RS,x0,y0+fy,W,H-fy); }
+    const t=B.goatT>0?'ЖАРИТ!':ready?'ЖМИ!':Math.floor(f)+'%';
+    c.font=`26px ${FONT}`; c.textAlign='left'; c.textBaseline='alphabetic'; c.lineWidth=4; c.strokeStyle='#000';
+    c.strokeText(t,x0+L.P+L.w+12,y0+L.P+L.h); c.fillStyle=ready?'#fff':'#e0a084'; c.fillText(t,x0+L.P+L.w+12,y0+L.P+L.h);
+  }
   // кружок с лицом
   const v=$('camVid');
   if (CAM.stream && v.videoWidth){
