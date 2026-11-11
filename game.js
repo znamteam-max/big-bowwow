@@ -83,7 +83,7 @@ const ITEMS = [
 const MODES = {
   rhythm:{name:'🥁 Ритм',   hint:'Ноты едут по дорожке — бей, когда нота в кольце. Каждый соперник — своя песня, дальше быстрее и сложнее. Чем длиннее комбо, тем у́же окно.'},
   click: {name:'👆 Кликер', hint:'Просто тапай как можно быстрее. Ритм не нужен — нужны скорость и прокачка: усилитель и роуди.'},
-  voice: {name:'🎤 Крик',   hint:'Кричи в микрофон «ХЕЙ!». Каждый отдельный крик — удар, громче = сильнее. Тапы отключены.'},
+  voice: {name:'🎤 Крик',   hint:'Держи громкость голоса в зелёной зоне. Зона ходит: то ори во всю глотку, то тише. Чем выше зона — тем сильнее удар. Дуть в микрофон не прокатит. Тапы отключены.'},
 };
 /* Ссылка для «Поделиться»: пост Music Core с историей и игрой. Пока пусто — делимся ботом. */
 const POST_URL = '';
@@ -417,27 +417,71 @@ function drawTrack(){
   requestAnimationFrame(tick);
 })();
 
-/* ================= МИКРОФОН ================= */
+/* ================= МИКРОФОН («Крик») =================
+   Громкость голоса (дБ) → шкала 0…1. По шкале ходит зелёная зона: то «ори», то тише.
+   Голос в зоне — удары (чем выше зона, тем сильнее, и копится комбо), вне зоны — ничего.
+   Дутьё/ветер (почти вся энергия ниже 250 Гц) режется вдвое. Верх шкалы подстраивается под микрофон телефона. */
 let mic=null;
+const MIC_TOP0 = -14;                 // дБFS громкого крика по умолчанию
 async function micStart(){
   if (mic) return true;
   try{
     const shared = !!(CAM.stream && CAM.stream.getAudioTracks().some(t=>t.readyState==='live'));   // iOS глушит второй захват микрофона — берём из камеры
     const st= shared ? new MediaStream(CAM.stream.getAudioTracks()) : await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:false,autoGainControl:false}});
-    const src=AC.createMediaStreamSource(st), an=AC.createAnalyser(); an.fftSize=1024; src.connect(an);
-    mic={st,an,shared,buf:new Float32Array(an.fftSize),floor:.01,loud:false,peak:0};
+    const src=AC.createMediaStreamSource(st), an=AC.createAnalyser(); an.fftSize=2048; an.smoothingTimeConstant=.3; src.connect(an);
+    mic={st,an,shared,buf:new Float32Array(an.fftSize),fb:new Float32Array(an.frequencyBinCount),floor:-60,top:S.micTop||MIC_TOP0,sdb:-90,hi:-90,lv:0,wind:0,hint:''};
     return true;
   }catch(e){ note('Микрофон недоступен (нет разрешения или устройства). Этот бой — в режиме «Кликер».'); return false; }
 }
-function micTick(){
-  if(!mic) return;
+function micRead(){
   mic.an.getFloatTimeDomainData(mic.buf);
-  let s=0; for(const v of mic.buf) s+=v*v; const rms=Math.sqrt(s/mic.buf.length);
-  $('micLvl').style.width=Math.min(30,rms*150)+'cqw';
-  const on=mic.floor*3+.03, off=mic.floor*1.8+.015;
-  if(!mic.loud && rms>on){ mic.loud=true; mic.peak=rms; }
-  else if(mic.loud){ mic.peak=Math.max(mic.peak,rms); if(rms<off){ mic.loud=false; tapClick('voice', Math.min(1.6,.6+mic.peak*5)); } }
-  if(!mic.loud) mic.floor=mic.floor*.995+rms*.005;
+  let s=0; for(const v of mic.buf) s+=v*v;
+  const db=10*Math.log10(s/mic.buf.length+1e-10);
+  mic.an.getFloatFrequencyData(mic.fb);
+  const hz=AC.sampleRate/mic.an.fftSize; let lo=0, mid=0;
+  for(let i=1;i<mic.fb.length;i++){ const f=i*hz; if(f>4000) break; const e=Math.pow(10,mic.fb[i]/10); if(f<250) lo+=e; else mid+=e; }
+  return {db, voiced: mid/(lo+mid+1e-20)};
+}
+function vzInit(){
+  B.vz={c:.8,goal:.8,tt:2.2,w:Math.max(.09,.15-((B.i||0)+(B.wave||1)-1)*.006),acc:0,out:0,inT:0,tot:0};
+  mic.hi=-90; mic.sdb=-90; mic.lv=0; mic.hint='';
+}
+function vzNext(z){                   // следующая цель зоны: прыжок минимум на треть шкалы
+  const opts=[.2,.4,.6,.8,1].filter(v=>Math.abs(v-z.goal)>=.3);
+  z.goal=opts[Math.random()*opts.length|0];
+  z.tt=1.3+Math.random()*1.4-Math.min(.6,((B.i||0)+(B.wave||1)-1)*.06);
+}
+function micTick(dt){
+  if(!mic||!B.vz) return;
+  const {db,voiced}=micRead(), z=B.vz;
+  if (db<mic.floor) mic.floor+=(db-mic.floor)*.3; else if (db<mic.floor+8) mic.floor+=(db-mic.floor)*.01;   // шум комнаты
+  mic.floor=Math.max(-75,Math.min(-35,mic.floor));
+  const bot=Math.max(mic.floor+8,-60);
+  mic.sdb+=(db-mic.sdb)*(1-Math.exp(-dt/.08)); mic.hi=Math.max(mic.hi,mic.sdb);
+  if (B.elapsed>6){                   // тихий микрофон — опускаем верх (не ниже −26 дБ), громкий — поднимаем
+    const tgt=Math.max(-26,Math.min(-3,mic.hi+1));
+    if (tgt<mic.top-2) mic.top=Math.max(tgt,mic.top-dt); else if (mic.hi>mic.top+4) mic.top=Math.min(-3,mic.top+dt);
+  }
+  let x=(db-bot)/Math.max(10,mic.top-bot);
+  if (voiced<.35 && x>.3){ x*=.5; mic.wind=.5; } else mic.wind=Math.max(0,mic.wind-dt);
+  x=Math.max(0,Math.min(1.25,x));
+  mic.lv+=(x-mic.lv)*(1-Math.exp(-dt/(x>mic.lv?.03:.12)));
+  const atk=B.preT>0||B.warnT>0;      // атака соперника — зона уходит наверх: «ори!»
+  if (!atk){ z.tt-=dt; if(z.tt<=0) vzNext(z); }
+  const goal=atk?1:z.goal;
+  z.c+=(goal-z.c)*(1-Math.exp(-dt/.25));
+  const lv=mic.lv, lo=z.c-z.w, hi=z.c>.93?9:z.c+z.w, inZ=lv>.06&&lv>=lo&&lv<=hi;
+  z.tot+=dt;
+  if (inZ){
+    z.inT+=dt; z.out=0; z.acc+=dt; const iv=B.warnT>0?.1:.22;
+    while(z.acc>=iv){ z.acc-=iv; B.combo++; comboUp(); tapClick('voice',(.4+.4*Math.min(1,z.c))*comboMult(B.combo)); }
+  } else { z.acc=0; z.out+=dt; if (z.out>.35 && B.combo) breakCombo(); }
+  const pct=v=>Math.max(0,Math.min(100,v*100))+'%';
+  $('vzZone').style.bottom=pct(lo); $('vzZone').style.top='calc(100% - '+pct(Math.min(1,hi))+')';
+  $('vzLvl').style.height=pct(lv); $('vzNeedle').style.bottom=pct(lv);
+  const m=$('micMeter'); m.classList.toggle('in',inZ); m.classList.toggle('wind',mic.wind>0);
+  const t = mic.wind>0 ? 'НЕ ДУЙ — КРИЧИ!' : inZ ? (z.c>.93?'ОРИ!':'ДЕРЖИ!') : (atk||z.c>.93) && lv<lo ? 'ОРИ!' : lv<lo ? 'ГРОМЧЕ ↑' : 'ТИШЕ ↓';
+  if (t!==mic.hint){ mic.hint=t; const s=$('shout'); s.textContent=t; s.className='shout'+(inZ?' in':lv>hi?' hi':''); }
 }
 
 /* ================= БОЙ ================= */
@@ -488,7 +532,7 @@ function enter(used){
     sfx(B.o.sfx); requestAnimationFrame(loop);
   });
   const afterTut=()=>{
-    if (B.mode==='voice') micStart().then(ok=>{ if(!ok) B.mode='click'; $('micMeter').style.display=ok?'block':'none'; $('shout').style.display=ok?'block':'none'; begin(); });
+    if (B.mode==='voice') micStart().then(ok=>{ if(!ok) B.mode='click'; else vzInit(); $('micMeter').style.display=ok?'block':'none'; $('shout').style.display=ok?'block':'none'; begin(); });
     else begin();
   };
   if (!S.tut[B.mode]) tutorial(B.mode, afterTut); else afterTut();
@@ -502,7 +546,7 @@ function tutorial(mode, cb){
   const head = mode==='rhythm'
     ? `<p><b>🥁</b><span>Ноты едут справа налево. <em>Тапай, когда нота в золотом кольце.</em> Каждый соперник — своя песня: темп и рисунок меняются.</span></p>
        <p><b>🎯</b><span>Пропустил ноту или тапнул в пустоту — <em>комбо сгорает</em>, соперник давит. Комбо ×1.15 / ×1.3 / ×1.5 на 10 / 25 / 50, но <em>окно попадания сужается</em>.</span></p>`
-    : `<p><b>👆</b><span>Режим «${mode==='voice'?'Крик':'Кликер'}»: ${mode==='voice'?'<em>кричи «ХЕЙ!»</em> — каждый отдельный крик — удар.':'<em>тапай как можно быстрее</em>, ритм не нужен.'}</span></p>
+    : `<p><b>👆</b><span>Режим «${mode==='voice'?'Крик':'Кликер'}»: ${mode==='voice'?'<em>держи голос в зелёной зоне</em> на шкале слева. Зона ходит: то <em>ори</em>, то тише. Выше зона — сильнее удар; держишь — копится комбо. Атака соперника — <em>ори изо всех сил</em>.':'<em>тапай как можно быстрее</em>, ритм не нужен.'}</span></p>
        <p><b>🧑‍🔧</b><span>Роуди из Магазина бьют за тебя автоматически.</span></p>`;
   d.innerHTML=`<h3>Как играть</h3>${head}${common}<button class="btn" style="margin-top:3cqw">Понял, погнали!</button>`;
   d.querySelector('button').onclick=e=>{ e.stopPropagation(); S.tut[mode]=true; save(); d.remove(); cb(); };
@@ -589,7 +633,7 @@ function judge(txt,col){
 function comboUp(){
   B.maxCombo=Math.max(B.maxCombo,B.combo);
   const c=$('combo'); c.classList.remove('bump'); void c.offsetWidth; c.classList.add('bump');
-  if ([10,25,50].includes(B.combo)){ pop(`🔥 КОМБО ${B.combo}  ×${comboMult(B.combo)}`,'#ff8a1c',true); sfx('cheer'); if(B.combo>=25) pop('ОКНО СУЖАЕТСЯ','#ff3d6a'); }
+  if ([10,25,50].includes(B.combo)){ pop(`🔥 КОМБО ${B.combo}  ×${comboMult(B.combo)}`,'#ff8a1c',true); sfx('cheer'); if(B.combo>=25&&B.mode==='rhythm') pop('ОКНО СУЖАЕТСЯ','#ff3d6a'); }
 }
 function breakCombo(){ if(B.combo>=10) pop('КОМБО СГОРЕЛО','#ff3d6a'); B.combo=0; }
 
@@ -736,7 +780,7 @@ function loop(now){
   if(!B||B.over||B.paused) return;
   const dt=Math.min(.05,(now-B.last)/1000); B.last=now;
   B.elapsed+=dt; if(!B.survival) B.t-=dt;
-  if (B.mode==='voice') micTick();
+  if (B.mode==='voice') micTick(dt);
   // давление соперника растёт к концу боя (0.85 → 1.45)
   const ramp = B.survival ? 1+(B.wave-1)*.06 : .85 + .6*Math.min(1,B.elapsed/30);
   let f=S0*B.k*ramp*(1+Math.sin(now/700)*.12);
@@ -804,9 +848,9 @@ function draw(){
   const gb=$('goat'); $('fury').style.clipPath=`inset(${100-(B.goatT>0?100:B.fury)}% 0 0 0)`;
   gb.classList.toggle('ready',B.fury>=100&&B.goatT<=0); gb.classList.toggle('active',B.goatT>0);
   $('mcPct').textContent = B.goatT>0 ? 'ЖАРИТ!' : B.fury>=100 ? 'ЖМИ!' : Math.floor(B.fury)+'%';
-  $('combo').textContent=B.mode==='rhythm'&&B.combo>1?`КОМБО ${B.combo}${comboMult(B.combo)>1?'  ·  ×'+comboMult(B.combo):''}`:'';
+  $('combo').textContent=(B.mode==='rhythm'||B.mode==='voice')&&B.combo>1?`КОМБО ${B.combo}${comboMult(B.combo)>1?'  ·  ×'+comboMult(B.combo):''}`:'';
   $('arena').classList.toggle('dark',B.blind>0);
-  const hb=document.querySelector('.heatBar'); if(hb){ hb.querySelector('i').style.height=(B.hot>0?100:B.heat/HEAT_MAX*100)+'%'; hb.classList.toggle('hot',B.hot>0||B.heat>HEAT_MAX*.7); hb.style.opacity=(B.mode==='click'||B.heat>0||B.hot>0)?1:.25; }
+  const hb=document.querySelector('.heatBar'); if(hb){ hb.querySelector('i').style.height=(B.hot>0?100:B.heat/HEAT_MAX*100)+'%'; hb.classList.toggle('hot',B.hot>0||B.heat>HEAT_MAX*.7); hb.style.opacity=B.mode==='voice'?0:(B.mode==='click'||B.heat>0||B.hot>0)?1:.25; }
   const k=B.pos/100, ow=$('oppW');
   if(!ow.classList.contains('lunge')) ow.style.transform=`translateX(${k*14}%) translateY(${-k*6}%) scale(${1-k*.18})`;
   ow.classList.toggle('scared',k>.55);
@@ -841,7 +885,9 @@ function end(win, timeout=false){
     reward = win ? Math.round((first ? 25+B.i*14 : 10+B.i*5) * (o.boss?1.6:1) * Math.pow(.7,B.drained)) + Math.floor(B.maxCombo/3) : 4+Math.max(0,Math.round((B.pos+100)/20));
     if (first) S.beaten++;
     $('resT').innerHTML = win?'Отпугнул!':(timeout?'Не дожал…':'Сбежал…');
-    $('resS').innerHTML = B.mode==='rhythm' ? stat(acc+'%','точность')+stat(B.maxCombo,'макс. комбо')+stat(B.miss+B.fake,'ошибок')
+    if (mic && B.vz){ S.micTop=Math.round(mic.top*10)/10; save(); }
+    $('resS').innerHTML = B.mode==='voice'&&B.vz ? stat(Math.round(B.vz.inT/Math.max(.1,B.vz.tot)*100)+'%','в зоне')+stat(B.maxCombo,'макс. комбо')+stat(B.hits,'ударов')
+                        : B.mode==='rhythm' ? stat(acc+'%','точность')+stat(B.maxCombo,'макс. комбо')+stat(B.miss+B.fake,'ошибок')
                                             : stat(B.hits,'ударов')+stat((B.hits/Math.max(1,B.elapsed)).toFixed(1),'в секунду')+stat(lvl('roadie'),'роуди');
     const fin = win && o.id==='puma' && B.h.id==='hetfield';
     if (fin) $('callBox').innerHTML = `
